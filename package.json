@@ -1,0 +1,21 @@
+{
+  "name": "leash",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "doctor": "tsx scripts/doctor.ts",
+    "recon": "tsx scripts/recon.ts",
+    "demo-reset": "tsx scripts/demo-reset.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "dotenv": "^16.4.7"
+  },
+  "dependencies": {
+    "viem": "^2.21.0",
+    "@somnia-chain/markets-sdk": "^0.28.1"
+  }
+}

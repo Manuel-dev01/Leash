@@ -1,0 +1,29 @@
+# secrets — never commit
+.env
+.env.*
+!.env.example
+*.key
+keystore/
+
+# deps
+node_modules/
+.pnpm-store/
+
+# build
+dist/
+build/
+out/
+cache/
+broadcast/
+.next/
+*.tsbuildinfo
+
+# foundry
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+
+# local
+.DS_Store
+*.log
+.recon/
