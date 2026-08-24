@@ -31,8 +31,12 @@ const REGISTRY = (process.env.MANDATE_REGISTRY ?? "0xa7baE1285096AbCEB67c147f27f
 
 const TICK = 1_000n, DECIMALS = 6;
 
+// takerOrderId and makerOrderId are INDEXED. Declaring all six as non-indexed
+// decodes to zeros without throwing anything a lazy catch would notice — which
+// is exactly what happened here once, making a settle look like a clean release
+// when it was really a decode failure.
 const orderFilledAbi = parseAbi([
-  "event OrderFilled(uint128 takerOrderId, uint128 makerOrderId, uint256 quantityFilled, uint256 takerRemainingQuantity, uint256 makerRemainingQuantity, uint256 fillPrice)",
+  "event OrderFilled(uint128 indexed takerOrderId, uint128 indexed makerOrderId, uint256 quantityFilled, uint256 takerRemainingQuantity, uint256 makerRemainingQuantity, uint256 fillPrice)",
 ]);
 
 const chain = {
@@ -174,19 +178,25 @@ async function main() {
   // invisible unless you check what actually changed.
   let placed = 0, fills = 0;
   let realOrderId = 0n, filledQty = 0n, fillPrice = 0n;
+  // Two passes: the placement log establishes our order id, and only then can
+  // fills be attributed to it.
   for (const l of rcpt.logs) {
-    if (l.topics[0] === TOPICS.BinaryOrderPlaced) {
-      placed++;
-      realOrderId = BigInt(l.topics[1] ?? "0x0");
-    }
+    if (l.topics[0] === TOPICS.BinaryOrderPlaced) realOrderId = BigInt(l.topics[1] ?? "0x0");
+  }
+  for (const l of rcpt.logs) {
+    if (l.topics[0] === TOPICS.BinaryOrderPlaced) placed++;
     if (l.topics[0] === TOPICS.OrderFilled) {
       fills++;
-      try {
-        const d = decodeEventLog({ abi: orderFilledAbi, data: l.data, topics: l.topics as never });
-        const a = d.args as unknown as { quantityFilled: bigint; fillPrice: bigint };
-        filledQty += a.quantityFilled ?? 0n;
-        fillPrice = a.fillPrice ?? 0n;
-      } catch { /* shape drift */ }
+      // Decode failures are LOUD. A swallowed one previously produced zeros that
+      // sailed through settlement as a plausible "nothing filled".
+      const d = decodeEventLog({ abi: orderFilledAbi, data: l.data, topics: l.topics as never });
+      const a = d.args as unknown as { takerOrderId: bigint; quantityFilled: bigint; fillPrice: bigint };
+      // Only OUR order's fills count. A transaction can carry the counterparty's
+      // side too, and summing everything would over-report.
+      if (a.takerOrderId === realOrderId) {
+        filledQty += a.quantityFilled;
+        fillPrice = a.fillPrice;
+      }
     }
   }
   console.log(`             receipt orderId ${realOrderId} (simulated was ${sim.result})`);
