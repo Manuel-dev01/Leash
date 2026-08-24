@@ -77,8 +77,8 @@ function revertData(err: unknown): Hex | null {
       const v = o[k];
       if (typeof v === "string" && /^0x[0-9a-fA-F]{8,}$/.test(v)) return v as Hex;
       if (v && typeof v === "object" && typeof (v as Record<string, unknown>).data === "string") {
-        const d = (v as Record<string, string>).data;
-        if (/^0x[0-9a-fA-F]{8,}$/.test(d)) return d as Hex;
+        const d = (v as Record<string, string | undefined>).data;
+        if (d && /^0x[0-9a-fA-F]{8,}$/.test(d)) return d as Hex;
       }
     }
     for (const k of ["cause", "error", "details", "walk"]) {
