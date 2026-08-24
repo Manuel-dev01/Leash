@@ -309,4 +309,87 @@ contract MandateEnforcementTest is Test {
         assertEq(used, 500_000, "reentry must not have reserved a second time");
         assertTrue(reg.holdsNoFunds());
     }
+
+    // ---- Deadhand settlement: bounded, resumable, isolated -----------------
+
+    function _mandateFor(address who, uint128 perTrade, uint128 cum) internal returns (uint256 id) {
+        usdc.mint(who, 1_000_000_000);
+        vm.prank(who);
+        usdc.approve(address(reg), type(uint256).max);
+        bytes32[] memory ms = new bytes32[](1);
+        ms[0] = MARKET;
+        vm.prank(who);
+        id = reg.createMandate(who, perTrade, cum, expiry, ms);
+    }
+
+    /**
+     * A market with more open reservations than one batch can process must not
+     * strand the remainder. The cursor is what makes that true, and this is the
+     * failure that only shows up when the demo has more mandates than the test.
+     */
+    function test_settleFinalizedMarket_isBoundedAndResumable() public {
+        uint256 id = _mandate(1_000_000, 100_000_000);
+        for (uint256 i = 0; i < 5; ++i) _place(id, 500_000, 1_000_000);
+        assertEq(reg.pendingSettlement(MARKET), 5);
+
+        (uint256 p1, bool d1) = reg.settleFinalizedMarket(MARKET, 2);
+        assertEq(p1, 2); assertFalse(d1, "not drained after 2 of 5");
+        assertEq(reg.pendingSettlement(MARKET), 3);
+
+        (uint256 p2, bool d2) = reg.settleFinalizedMarket(MARKET, 2);
+        assertEq(p2, 2); assertFalse(d2);
+
+        (uint256 p3, bool d3) = reg.settleFinalizedMarket(MARKET, 2);
+        assertEq(p3, 1, "only the straggler remained");
+        assertTrue(d3, "drained");
+        assertEq(reg.pendingSettlement(MARKET), 0);
+
+        (,,,, uint128 used,,,) = reg.mandates(id);
+        assertEq(used, 0, "all dead exposure released across the three batches");
+    }
+
+    /**
+     * One hostile delegator must not block enforcement for its neighbours. The
+     * concern is not subscription survival — that was measured as safe — it is a
+     * batch that reverts and enforces nothing for the other mandates in it.
+     */
+    function test_settleFinalizedMarket_isolatesAHostileDelegator() public {
+        address hostile = address(0xBAD);
+        uint256 idA = _mandate(1_000_000, 10_000_000);
+        uint256 idB = _mandateFor(hostile, 1_000_000, 10_000_000);
+
+        _place(idA, 500_000, 1_000_000);
+        vm.prank(hostile);
+        reg.placeForDelegator(idB, MARKET, address(pool), 0, 500_000, 1_000_000, uint64(block.timestamp + 60));
+
+        // Now make paying the hostile delegator revert outright.
+        usdc.setReverting(hostile, true);
+        pool.setConsumeBps(5_000); // leave a remainder so a sweep is attempted
+
+        (uint256 processed, bool drained) = reg.settleFinalizedMarket(MARKET, 10);
+        assertTrue(drained, "batch completed despite a hostile member");
+        assertGe(processed, 1, "at least the honest mandate settled");
+
+        (,,,, uint128 usedA,,,) = reg.mandates(idA);
+        assertEq(usedA, 0, "the honest mandate was enforced regardless");
+    }
+
+    function test_settleFinalizedMarket_revokesBreachedOnSettle() public {
+        uint256 id = _mandate(1_000_000, 1_000_000);
+        _place(id, 1_000_000, 1_000_000);
+        vm.warp(expiry + 1); // expiry is a breach condition
+        reg.settleFinalizedMarket(MARKET, 10);
+        (,,,,, , bool revoked,) = reg.mandates(id);
+        assertTrue(revoked, "the deadhand revokes on settle");
+    }
+
+    function test_settleFinalizedMarket_isIdempotent() public {
+        uint256 id = _mandate(1_000_000, 10_000_000);
+        _place(id, 500_000, 1_000_000);
+        reg.settleFinalizedMarket(MARKET, 10);
+        (,,,, uint128 a,,,) = reg.mandates(id);
+        reg.settleFinalizedMarket(MARKET, 10); // cursor is exhausted; must be a no-op
+        (,,,, uint128 b,,,) = reg.mandates(id);
+        assertEq(a, b, "re-settling must not double-release");
+    }
 }

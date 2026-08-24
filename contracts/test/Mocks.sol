@@ -11,8 +11,11 @@ contract MockUSDC {
 
     /// Set to make transfers TO this address fail, for the griefing test.
     mapping(address => bool) public blocked;
+    /// Harsher than `blocked`: transfers to this address REVERT rather than return false.
+    mapping(address => bool) public reverting;
 
     function setBlocked(address who, bool v) external { blocked[who] = v; }
+    function setReverting(address who, bool v) external { reverting[who] = v; }
     function mint(address to, uint256 a) external { balanceOf[to] += a; }
 
     function approve(address s, uint256 a) external returns (bool) {
@@ -26,6 +29,7 @@ contract MockUSDC {
     function setHooked(address who, bool v) external { hooked[who] = v; }
 
     function transfer(address to, uint256 a) external returns (bool) {
+        require(!reverting[to], "recipient reverts");
         if (blocked[to]) return false; // returns false rather than reverting
         balanceOf[msg.sender] -= a;
         balanceOf[to] += a;

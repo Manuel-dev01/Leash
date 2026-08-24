@@ -102,6 +102,23 @@ contract MandateRegistry {
     mapping(address => uint256) public owed;
     uint256 public totalOwed;
 
+    /**
+     * Reservation keys per market, plus how far a settlement sweep has walked
+     * them. A validator-invoked handler cannot read logs (§4.3 r18 — nothing is
+     * fetched for you), so it cannot pass fill data. It CAN, however, act on the
+     * one fact finalization establishes for certain: the market is over, so any
+     * still-open reservation will never fill, and the exposure it holds is dead.
+     *
+     * The cursor makes a partial batch resumable. Without it, a market with more
+     * open orders than one batch can process would silently strand the
+     * remainder — the failure that only appears when the demo has more mandates
+     * than the test did.
+     */
+    mapping(bytes32 => bytes32[]) public marketReservations;
+    mapping(bytes32 => uint256) public settleCursor;
+    /// mandateId => marketId => outcome quantity bought, for the payout sweep.
+    mapping(uint256 => mapping(bytes32 => uint256)) public position;
+
     // ---- events ------------------------------------------------------------
 
     event MandateCreated(
@@ -117,6 +134,7 @@ contract MandateRegistry {
     event Returned(address indexed to, uint256 amount);
     event ReturnFailed(address indexed to, uint256 amount);
     event OwedClaimed(address indexed by, uint256 amount);
+    event PayoutSwept(uint256 indexed mandateId, address indexed to, uint256 amount, bytes32 marketId);
 
     // ---- errors ------------------------------------------------------------
 
@@ -257,9 +275,10 @@ contract MandateRegistry {
 
         collateral.approve(pool, 0);
 
-        reservations[_key(pool, orderId)] = Reservation({
-            mandateId: mandateId, reserved: uint128(cost), open: true
-        });
+        bytes32 rk = _key(pool, orderId);
+        reservations[rk] = Reservation({mandateId: mandateId, reserved: uint128(cost), open: true});
+        marketReservations[marketId].push(rk);
+        position[mandateId][marketId] += quantity;
 
         emit OrderPlacedFor(mandateId, marketId, pool, orderId, uint128(cost), m.usedExposure);
 
@@ -301,6 +320,74 @@ contract MandateRegistry {
             // Defensive: never underflow a mandate's exposure if accounting drifts.
             m.usedExposure = m.usedExposure > release ? m.usedExposure - release : 0;
             emit ExposureReleased(r.mandateId, release, m.usedExposure);
+        }
+    }
+
+    /**
+     * Settle a FINALIZED market: the entry point a validator-invoked handler can
+     * actually call.
+     *
+     * Needs no fill data, because finalization settles the question by itself —
+     * a still-open reservation on a finalized market can never fill, so all of
+     * its reserved exposure is releasable. That is why this exists separately
+     * from `settleAndEnforce`, which needs a fill price no contract can read.
+     *
+     * BOUNDED and RESUMABLE. Processes at most `maxItems` from the cursor and
+     * returns whether the market is drained, so the caller (handler or human)
+     * can come back for the rest. Stragglers are never silently dropped.
+     *
+     * PER-ITEM ISOLATION. One hostile delegator must not be able to block
+     * enforcement for the other thirty-one, so each mandate's settle-and-sweep
+     * is wrapped. Subscription survival is not the concern — that was measured
+     * as safe — the concern is a batch that reverts and enforces nothing.
+     *
+     * Permissionless, like everything else here: the handler is one caller among
+     * several, never the source of truth.
+     */
+    function settleFinalizedMarket(bytes32 marketId, uint256 maxItems)
+        external
+        returns (uint256 processed, bool drained)
+    {
+        bytes32[] storage keys = marketReservations[marketId];
+        uint256 i = settleCursor[marketId];
+        uint256 end = i + maxItems;
+        if (end > keys.length) end = keys.length;
+
+        for (; i < end; ++i) {
+            try this.settleOne(keys[i], marketId) { processed++; }
+            catch { /* isolated: a bad mandate must not stop its neighbours */ }
+        }
+        settleCursor[marketId] = i;
+        drained = i >= keys.length;
+    }
+
+    /**
+     * External only so `settleFinalizedMarket` can try/catch it. Callable
+     * directly too — it is permissionless and idempotent either way.
+     */
+    function settleOne(bytes32 rk, bytes32 marketId) external {
+        Reservation storage r = reservations[rk];
+        if (!r.open) return;
+        r.open = false;
+
+        Mandate storage m = mandates[r.mandateId];
+        uint128 release = r.reserved;
+        m.usedExposure = m.usedExposure > release ? m.usedExposure - release : 0;
+        emit ExposureReleased(r.mandateId, release, m.usedExposure);
+
+        if (!m.revoked && (m.usedExposure > m.maxCumulativeExposure || block.timestamp >= m.expiry)) {
+            m.revoked = true;
+            emit MandateRevoked(r.mandateId, msg.sender, "deadhand");
+        }
+
+        // Sweep anything sitting here to the delegator. Between transactions the
+        // invariant holds this at zero, so a non-zero balance at finalization is
+        // returned escrow or payout — money moving to the party who did NOT trade.
+        uint256 free = collateral.balanceOf(address(this));
+        if (free > totalOwed) {
+            uint256 amount = free - totalOwed;
+            _returnTo(m.delegator, amount);
+            emit PayoutSwept(r.mandateId, m.delegator, amount, marketId);
         }
     }
 
@@ -396,6 +483,16 @@ contract MandateRegistry {
     }
 
     // ---- views -------------------------------------------------------------
+
+    function openReservationCount(bytes32 marketId) external view returns (uint256) {
+        return marketReservations[marketId].length;
+    }
+
+    function pendingSettlement(bytes32 marketId) external view returns (uint256) {
+        uint256 n = marketReservations[marketId].length;
+        uint256 c = settleCursor[marketId];
+        return n > c ? n - c : 0;
+    }
 
     function remainingExposure(uint256 mandateId) external view returns (uint256) {
         Mandate storage m = mandates[mandateId];
