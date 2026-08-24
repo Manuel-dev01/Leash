@@ -207,3 +207,39 @@ export const REACTIVITY = {
    */
   onlyPrecompileCanInvoke: true,
 } as const;
+
+/**
+ * The MarketFinalized payload, captured from a REAL validator invocation
+ * (2026-08-24, handler 0x7B7fECF3306Ae216272C1363Dc70201cFDE9b326).
+ *
+ *   emitter  0x3ecC694Cef705358864a646142ac17A90E29e388   (binaryModule)
+ *   topics   3
+ *     [0] 0x8f396ac6...  MarketFinalized signature
+ *     [1] marketId       (indexed)
+ *     [2] pool           (indexed)
+ *   data     32 bytes    marketKey
+ *
+ * THE marketKey IS PACKED, NOT A PLAIN ID:
+ *
+ *   0x00000000 6a2ce98f392eda26c68e9762fc3632dd32d034b7 0000000000000574
+ *     4b pad   20b pool address                          8b nonce (=1396)
+ *
+ *   marketKey == (uint256(uint160(pool)) << 64) | nonce
+ *
+ * Reading it as a uint256 gives a meaningless 68-digit number that looks like a
+ * valid id. The pool in the low bits matches topic[2] exactly, which is how it
+ * was caught. The nonce increments when a pool is RECYCLED onto a new market,
+ * so this field is the pool->market binding — decode it, never compare it raw.
+ */
+export const MARKET_FINALIZED_PAYLOAD = {
+  emitter: EC.binaryModule,
+  topicCount: 3,
+  topic1: "marketId (indexed)",
+  topic2: "pool (indexed)",
+  dataBytes: 32,
+  /** marketKey = (pool << 64) | nonce */
+  unpackMarketKey: (k: bigint) => ({
+    pool: `0x${((k >> 64n) & ((1n << 160n) - 1n)).toString(16).padStart(40, "0")}`,
+    nonce: k & ((1n << 64n) - 1n),
+  }),
+} as const;
