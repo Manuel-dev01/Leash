@@ -21,6 +21,7 @@ import {
   type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { parseAbi, decodeEventLog } from "viem";
 import { EC, NETWORK, OrderKind, TOPICS, VENUE_ID_TESTNET } from "../packages/leash-ec/src/constants.js";
 import { ecClient, discoverMarkets, tradableMarkets } from "../packages/leash-ec/src/discover.js";
 
@@ -29,6 +30,10 @@ const WS = process.env.EC_WS_URL ?? "wss://api.infra.testnet.somnia.network/ws";
 const REGISTRY = (process.env.MANDATE_REGISTRY ?? "0xa7baE1285096AbCEB67c147f27f88986003C0119") as Address;
 
 const TICK = 1_000n, DECIMALS = 6;
+
+const orderFilledAbi = parseAbi([
+  "event OrderFilled(uint128 takerOrderId, uint128 makerOrderId, uint256 quantityFilled, uint256 takerRemainingQuantity, uint256 makerRemainingQuantity, uint256 fillPrice)",
+]);
 
 const chain = {
   id: NETWORK.chainId, name: "Somnia Shannon",
@@ -161,11 +166,31 @@ async function main() {
   console.log(`  [delegate] placed. status=${rcpt.status} logs=${rcpt.logs.length}`);
   console.log(`             ${NETWORK.explorer}/tx/${h}`);
 
+  // Read the REAL order id and the REAL fill price from the receipt.
+  // The simulated id is NOT the real one (§4.6 B2) and a taker is charged the
+  // FILL price, not its offer (§4.6 B1) — settling with either simulated value
+  // silently matches no reservation and releases nothing, while still returning
+  // status=success because settleAndEnforce is idempotent. That failure is
+  // invisible unless you check what actually changed.
   let placed = 0, fills = 0;
+  let realOrderId = 0n, filledQty = 0n, fillPrice = 0n;
   for (const l of rcpt.logs) {
-    if (l.topics[0] === TOPICS.BinaryOrderPlaced) placed++;
-    if (l.topics[0] === TOPICS.OrderFilled) fills++;
+    if (l.topics[0] === TOPICS.BinaryOrderPlaced) {
+      placed++;
+      realOrderId = BigInt(l.topics[1] ?? "0x0");
+    }
+    if (l.topics[0] === TOPICS.OrderFilled) {
+      fills++;
+      try {
+        const d = decodeEventLog({ abi: orderFilledAbi, data: l.data, topics: l.topics as never });
+        const a = d.args as unknown as { quantityFilled: bigint; fillPrice: bigint };
+        filledQty += a.quantityFilled ?? 0n;
+        fillPrice = a.fillPrice ?? 0n;
+      } catch { /* shape drift */ }
+    }
   }
+  console.log(`             receipt orderId ${realOrderId} (simulated was ${sim.result})`);
+  console.log(`             filled qty ${filledQty} at fill price ${fillPrice} (offered ${price})`);
   console.log(`             BinaryOrderPlaced=${placed}  OrderFilled=${fills}`);
 
   // ---- 3. the headline invariant, on chain --------------------------------
@@ -189,16 +214,20 @@ async function main() {
   console.log("\n  [delete-test] settling from the STRANGER key — no handler involved");
   const stranger = acct("STRANGER_KEY");
   const wS = createWalletClient({ account: stranger, chain, transport: http(RPC) });
-  const orderId = sim.result as unknown as bigint;
+  const remBefore = await pub.readContract({ address: REGISTRY, abi: reg, functionName: "remainingExposure", args: [mandateId] }) as bigint;
   try {
-    const sh = await wS.writeContract({ address: REGISTRY, abi: reg, functionName: "settleAndEnforce", args: [pool, orderId, price, fills > 0 ? qty : 0n] as never });
+    const sh = await wS.writeContract({ address: REGISTRY, abi: reg, functionName: "settleAndEnforce", args: [pool, realOrderId, fillPrice, filledQty] as never });
     const sr = await pub.waitForTransactionReceipt({ hash: sh });
     console.log(`                status=${sr.status}  ${NETWORK.explorer}/tx/${sh}`);
   } catch (e) {
     console.log(`                ${named(e)}`);
   }
   const rem = await pub.readContract({ address: REGISTRY, abi: reg, functionName: "remainingExposure", args: [mandateId] }) as bigint;
-  console.log(`                remaining exposure now ${formatUnits(rem, 6)} tUSDC`);
+  console.log(`                remaining exposure ${formatUnits(remBefore, 6)} -> ${formatUnits(rem, 6)} tUSDC`);
+  const released = rem - remBefore;
+  console.log(released > 0n
+    ? `                released ${formatUnits(released, 6)} tUSDC of over-reservation`
+    : `                nothing to release (order filled at its limit)`);
   console.log(`                Layer 1 is complete without any handler.\n`);
 }
 
