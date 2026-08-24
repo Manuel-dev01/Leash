@@ -14,6 +14,7 @@
  */
 import "dotenv/config";
 import { createPublicClient, http, formatUnits, type Address } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { EC, NETWORK, TOPICS } from "../packages/leash-ec/src/constants.js";
 import { checkTopics } from "../packages/leash-ec/src/topics.js";
 
@@ -122,13 +123,28 @@ async function main() {
     : bad("no binary order flow — self-funding the book becomes a hard dependency");
 
   // wallets ---------------------------------------------------------------
-  console.log("\nwallets");
-  for (const k of ["DELEGATOR_ADDRESS", "DELEGATE_ADDRESS"] as const) {
-    const a = process.env[k];
-    if (!a) { info(`${k} unset`); continue; }
-    const bal = await client.getBalance({ address: a as Address });
-    info(`${k} ${a} — ${formatUnits(bal, 18)} STT`);
-    if (bal === 0n) bad(`${k} has zero STT`);
+  //
+  // Addresses are DERIVED from the keys in .env, never listed separately — a
+  // hand-copied address that disagrees with the key it is supposed to match is
+  // a debugging session nobody enjoys.
+  console.log("");
+  console.log("wallets");
+  const roles = [
+    ["FUND_KEY", "delegator — collateral, grants, deploys, funds the handler"],
+    ["DELEGATE_KEY", "delegate  — trades only, must hold no collateral"],
+    ["STRANGER_KEY", "stranger  — never granted; used for the negative test"],
+  ] as const;
+  for (const [envName, role] of roles) {
+    const raw = process.env[envName];
+    if (!raw) { info(`${envName} unset — ${role}`); continue; }
+    const pk = (raw.startsWith("0x") ? raw : `0x${raw}`) as `0x${string}`;
+    let acct;
+    try { acct = privateKeyToAccount(pk); }
+    catch { bad(`${envName} is not a valid private key`); continue; }
+    const bal = await client.getBalance({ address: acct.address });
+    info(`${envName.padEnd(13)} ${acct.address}  ${Number(formatUnits(bal, 18)).toFixed(4)} STT`);
+    info(`${" ".repeat(13)} ${role}`);
+    if (bal === 0n) bad(`${envName} has zero STT — it cannot send a transaction`);
   }
 
   console.log(failures === 0 ? "\nall checks passed\n" : `\n${failures} check(s) FAILED\n`);
