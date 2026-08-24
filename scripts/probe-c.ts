@@ -153,7 +153,7 @@ async function main() {
   for (let hi = head; hi > fromBlock; hi -= SPAN + 1n) {
     const lo = hi - SPAN > fromBlock ? hi - SPAN : fromBlock;
     const page = await pub.getLogs({ address: HANDLER, fromBlock: lo, toBlock: hi });
-    logs.push(...(page as never));
+    logs.push(...(page as unknown as typeof logs));
     if (lo === fromBlock) break;
   }
   const invoked = logs.filter((l) => l.topics.length > 0);
