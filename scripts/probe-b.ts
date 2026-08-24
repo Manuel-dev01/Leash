@@ -144,15 +144,31 @@ async function main() {
   // ---- build the order ---------------------------------------------------
   // Price THROUGH the touch. We are charged the resting price, so an aggressive
   // limit buys certainty of crossing at no extra cost.
-  const limit = Math.min(ask + 0.03, 0.99);
+  // The indexer book LAGS the chain (EC gotcha 9), so "ask + a few ticks" is
+  // priced against a quote that may already be gone — which is exactly what
+  // happened on the first run: bid 0.545 into a 0.515 ask and it rested.
+  // Because a taker is charged the FILL price and not the price it offered
+  // (EC gotcha 7), bidding to the top of the range costs nothing extra and
+  // removes the stale-book failure mode entirely. Cost is bounded by qty.
+  const limit = Number(process.env.LIMIT ?? 0.99);
   const priceRaw = alignPrice(toRaw(limit));
-  const qtyRaw = alignQty(toRaw(2));
+  const qtyRaw = alignQty(toRaw(Number(process.env.QTY ?? 1)));
   const expireNs = BigInt(Date.now() + 60_000) * 1_000_000n;
   const args = [OrderKind.BUY_YES, priceRaw, qtyRaw, expireNs, 0, 0,
     "0x0000000000000000000000000000000000000000" as Address, 0n, 0n] as const;
 
   console.log(`  limit  ${limit} -> raw ${priceRaw} (tick-aligned: ${priceRaw % TICK === 0n})`);
   console.log(`  qty    raw ${qtyRaw}`);
+
+  // ---- cancel a stale resting order, reclaiming its escrow ---------------
+  const stale = process.env.CANCEL_ID;
+  if (stale) {
+    try {
+      const h = await wallet.writeContract({ address: pool, abi: binaryPoolWriteAbi, functionName: "cancelOrder", args: [BigInt(stale)] });
+      const r = await pub.waitForTransactionReceipt({ hash: h });
+      console.log(`  cancelled ${stale} status=${r.status}  ${NETWORK.explorer}/tx/${h}`);
+    } catch (e) { console.log(`  cancel of ${stale} failed: ${explain(e)}`); }
+  }
 
   // ---- approve -----------------------------------------------------------
   const allowance = await pub.readContract({ address: EC.collateral as Address, abi: erc20, functionName: "allowance", args: [fund.address, pool] }) as bigint;
