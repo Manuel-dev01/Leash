@@ -205,4 +205,11 @@ async function main() {
     : `\n    => residual ${formatUnits(rAfter, 6)} tUSDC left in router — MandateRegistry must\n       sweep the unspent remainder back to the delegator in the same tx.\n`);
 }
 
-main().catch((e) => { console.error("\nPROBE B2 failed:", explain(e)); process.exit(1); });
+// The SDK's live-tail WebSocket keeps the event loop alive after main() resolves
+// — measured: this script produced its full output and then sat until `timeout`
+// killed it with 124. Harmless for a one-shot probe, fatal for demo-reset.ts and
+// for any rehearsal harness, where a script that never returns is indistinguishable
+// from one that hung. ec-core ships `shutdown()` for exactly this; we just exit.
+main()
+  .then(() => process.exit(0))
+  .catch((e) => { console.error("\nPROBE B2 failed:", explain(e)); process.exit(1); });
