@@ -164,3 +164,46 @@ export const POOL_SELECTORS = {
 
 /** Status 1 = Trading. Only a Trading market accepts orders. */
 export const MARKET_STATUS_TRADING = 1;
+
+/**
+ * Somnia reactivity — from @somnia-chain/reactivity-contracts 0.2.1 source,
+ * read 2026-08-24. These numbers decide whether Layer 2 is affordable.
+ *
+ * THE 32 STT IS NOT A DEPOSIT. `CLAUDE.md` §4.3 r16 reads as "subscriptions
+ * cost 32 STT to fund". What the source actually says is
+ * `SUBSCRIPTION_OWNER_MINIMUM_BALANCE = 32 ether`, enforced as
+ * `InsufficientBalance()` — "calling contract balance is below ...". It is a
+ * BALANCE FLOOR on the contract that calls subscribe(), checked at subscribe
+ * time. The money is not spent and not escrowed; it just has to be sitting
+ * there.
+ *
+ * Two consequences, both load-bearing on a 53 STT budget:
+ *
+ *   1. DeadhandHandler must HOLD >= 32 STT when it subscribes, so the 32 STT
+ *      lives inside the contract. It is therefore STRANDED unless the contract
+ *      has an owner-only withdraw. Writing that withdraw is not optional.
+ *
+ *   2. The real cost is per-invocation, not per-subscription. Each callback is
+ *      charged gas at up to `maxFeePerGas`, drawn from the owner. The library
+ *      DEFAULTS (10M gas x 20 gwei = 0.2 STT per invocation) are ruinous here:
+ *      MarketFinalized fires roughly every 5-23s, so defaults would burn the
+ *      whole budget in hours. Override both, and unsubscribe between sessions.
+ */
+export const REACTIVITY = {
+  precompile: "0x0000000000000000000000000000000000000100",
+  /** Balance floor on the SUBSCRIBING CONTRACT, not a payment. */
+  subscriptionOwnerMinimumBalanceWei: 32n * 10n ** 18n,
+  /** Matches the observed live gasPrice exactly (6 gwei, measured 2026-08-24). */
+  minimumBaseFeePerGasWei: 6n * 10n ** 9n,
+  maximumHandlerGasLimit: 200_000_000n,
+  /** Library defaults — DO NOT USE. 10M x 20 gwei = 0.2 STT per invocation. */
+  defaultMaxFeePerGasWei: 20n * 10n ** 9n,
+  defaultHandlerGasLimit: 10_000_000n,
+  /** ~210k gas each, so ~0.0013 STT. Subscribing/unsubscribing is nearly free. */
+  subscriptionManagementGas: 210_000n,
+  /**
+   * onEvent enforces msg.sender == 0x0100 in the base contract. This is why
+   * demo beat 3 is honest: nobody — including us — can forge an invocation.
+   */
+  onlyPrecompileCanInvoke: true,
+} as const;
