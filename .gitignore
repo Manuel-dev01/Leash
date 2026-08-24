@@ -27,3 +27,6 @@ contracts/broadcast/
 .DS_Store
 *.log
 .recon/
+
+# forge-std is cloned by setup, not vendored
+contracts/lib/
