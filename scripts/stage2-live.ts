@@ -21,12 +21,11 @@ import {
   type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { SomniaMarkets } from "@somnia-chain/markets-sdk";
 import { EC, NETWORK, OrderKind, TOPICS, VENUE_ID_TESTNET } from "../packages/leash-ec/src/constants.js";
+import { ecClient, discoverMarkets, tradableMarkets } from "../packages/leash-ec/src/discover.js";
 
 const RPC = process.env.EC_RPC_URL ?? "https://api.infra.testnet.somnia.network";
 const WS = process.env.EC_WS_URL ?? "wss://api.infra.testnet.somnia.network/ws";
-const INDEXER = process.env.INDEXER_URL ?? "https://dev.smk.somnia.host/v1/graphql";
 const REGISTRY = (process.env.MANDATE_REGISTRY ?? "0xa7baE1285096AbCEB67c147f27f88986003C0119") as Address;
 
 const TICK = 1_000n, DECIMALS = 6;
@@ -109,32 +108,22 @@ async function main() {
   console.log(`  delegator ${delegator.address}`);
   console.log(`  delegate  ${delegate.address}\n`);
 
-  // ---- find a live market -------------------------------------------------
-  const ex = new SomniaMarkets({ indexerUrl: INDEXER, chain, wsRpcUrl: WS, addresses: EC as never } as never) as never as {
-    loadMarkets(f: boolean): Promise<Record<string, unknown>>;
-    fetchOrderBook(s: string, d: number): Promise<{ bids: [number, number][]; asks: [number, number][] }>;
-  };
-  const all = Object.values(await ex.loadMarkets(true)) as Record<string, unknown>[];
-  const mine = all.filter((m) => {
-    const i = m.info as Record<string, unknown> | undefined;
-    return i?.marketType === "BINARY" && i?.venueId === VENUE_ID_TESTNET;
-  });
-  let pool: Address | null = null, marketId: Hex | null = null, sym = "";
-  for (const m of mine.slice(0, 25)) {
-    const s = ((m.outcomes ?? []) as { symbol?: string }[])[0]?.symbol;
-    const info = m.info as Record<string, unknown>;
-    if (!s || !info?.marketId) continue;
-    try {
-      const ob = await ex.fetchOrderBook(s, 3);
-      const ask = ob.asks?.[0]?.[0];
-      const p = (m.pool ?? info.poolAddress) as Address | undefined;
-      if (ask && ask > 0 && ask < 0.97 && p) { pool = p; marketId = info.marketId as Hex; sym = s; break; }
-    } catch { /* next */ }
-  }
-  if (!pool || !marketId) throw new Error("no live market found");
-  console.log(`  market ${sym}`);
+  // ---- find a live market, FROM CHAIN ------------------------------------
+  // The indexer went down during this stage's first run. Discovery now reads
+  // BinaryMarketsModule.MarketCreated directly, so the demo's critical path has
+  // no third-party service in it at all.
+  const disc = ecClient(RPC);
+  const found = await discoverMarkets(disc, { venueId: VENUE_ID_TESTNET as Hex, windows: 14 });
+  const live = await tradableMarkets(disc, found, { limit: 5 });
+  console.log(`  discovered ${found.length} markets on our venue from chain (no indexer)`);
+  if (live.length === 0) throw new Error("no tradable market found on chain");
+  const chosen = live[0]!;
+  const pool = chosen.pool;
+  const marketId = chosen.marketId;
+  console.log(`  market   ${chosen.asset} ttl=${Math.floor((Number(chosen.expiry) - Date.now() / 1000) / 60)}m`);
   console.log(`  marketId ${marketId}`);
-  console.log(`  pool     ${pool}\n`);
+  console.log(`  pool     ${pool}
+`);
 
   // ---- 1. delegator approves + creates the mandate ------------------------
   const allowance = await pub.readContract({ address: EC.collateral as Address, abi: erc20, functionName: "allowance", args: [delegator.address, REGISTRY] }) as bigint;
@@ -182,7 +171,7 @@ async function main() {
   // ---- 3. the headline invariant, on chain --------------------------------
   const clean = await pub.readContract({ address: REGISTRY, abi: reg, functionName: "holdsNoFunds" }) as boolean;
   const bal = await pub.readContract({ address: EC.collateral as Address, abi: erc20, functionName: "balanceOf", args: [REGISTRY] }) as bigint;
-  const m = await pub.readContract({ address: REGISTRY, abi: reg, functionName: "mandates", args: [mandateId] }) as unknown[];
+  const m = await pub.readContract({ address: REGISTRY, abi: reg, functionName: "mandates", args: [mandateId] }) as unknown as readonly unknown[];
   console.log(`\n  holdsNoFunds() = ${clean}   registry tUSDC balance ${formatUnits(bal, 6)}`);
   console.log(`  usedExposure   = ${formatUnits(m[4] as bigint, 6)} tUSDC`);
   console.log(`  remaining      = ${formatUnits(await pub.readContract({ address: REGISTRY, abi: reg, functionName: "remainingExposure", args: [mandateId] }) as bigint, 6)} tUSDC`);
