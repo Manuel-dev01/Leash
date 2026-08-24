@@ -142,7 +142,20 @@ async function main() {
   console.log(`  balance     : ${formatEther(before.bal)} -> ${formatEther(after.bal)} STT  (spent ${formatEther(spent)})`);
   if (fired > 0n) console.log(`  cost each   : ~${formatEther(spent / fired)} STT`);
 
-  const logs = await pub.getLogs({ address: HANDLER, fromBlock, toBlock: "latest" });
+  // Window the scan. The RPC caps eth_getLogs at 1000 blocks (~100s at 0.1s
+  // blocks) — a limit this project documented in constants.ts and which this
+  // very script then violated by spanning two 50s windows. Recorded, not
+  // quietly patched: a documented constraint you do not enforce in code is a
+  // constraint you will break.
+  const head = await pub.getBlockNumber();
+  const SPAN = BigInt(NETWORK.maxGetLogsBlockRange - 1);
+  const logs: { data: Hex; topics: readonly Hex[]; transactionHash: Hex | null }[] = [];
+  for (let hi = head; hi > fromBlock; hi -= SPAN + 1n) {
+    const lo = hi - SPAN > fromBlock ? hi - SPAN : fromBlock;
+    const page = await pub.getLogs({ address: HANDLER, fromBlock: lo, toBlock: hi });
+    logs.push(...(page as never));
+    if (lo === fromBlock) break;
+  }
   const invoked = logs.filter((l) => l.topics.length > 0);
   let gasSamples: bigint[] = [];
   for (const l of invoked) {
