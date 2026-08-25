@@ -122,6 +122,40 @@ async function main() {
     ? ok(`${placed.length} BinaryOrderPlaced across ${pools.size} pools in ~${200 * NETWORK.blockTimeSec}s`)
     : bad("no binary order flow — self-funding the book becomes a hard dependency");
 
+  // ---- LIVE contract invariants ------------------------------------------
+  //
+  // §0 rule 7: any invariant we quote to judges needs a live assertion, not only
+  // a unit test. holdsNoFunds() was green in the suite while the DEPLOYED
+  // registry held 0.24 tUSDC of unattributed escrow, because the mock refunds
+  // synchronously and the venue does not. This is the check that would have
+  // caught it.
+  const REG = process.env.MANDATE_REGISTRY;
+  if (REG) {
+    console.log("");
+    console.log("deployed registry invariants");
+    const regAbi = [
+      { type: "function", name: "holdsNoFunds", stateMutability: "view", inputs: [], outputs: [{ type: "bool" }] },
+      { type: "function", name: "unattributed", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+      { type: "function", name: "totalOwed", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+      { type: "function", name: "totalRefundClaim", stateMutability: "view", inputs: [], outputs: [{ type: "uint256" }] },
+    ] as const;
+    try {
+      const clean = await client.readContract({ address: REG as Address, abi: regAbi, functionName: "holdsNoFunds" }) as boolean;
+      const stray = await client.readContract({ address: REG as Address, abi: regAbi, functionName: "unattributed" }) as bigint;
+      const owed = await client.readContract({ address: REG as Address, abi: regAbi, functionName: "totalOwed" }) as bigint;
+      const claims = await client.readContract({ address: REG as Address, abi: regAbi, functionName: "totalRefundClaim" }) as bigint;
+      info(`${REG}`);
+      info(`owed ${formatUnits(owed, 6)} · refundClaims ${formatUnits(claims, 6)} · unattributed ${formatUnits(stray, 6)}`);
+      clean && stray === 0n
+        ? ok("holdsNoFunds() TRUE on the deployed contract — the README claim, live")
+        : bad(`holdsNoFunds()=${clean}, unattributed=${formatUnits(stray, 6)} tUSDC. The no-custody claim is FALSE right now.`);
+    } catch (e) {
+      bad(`could not read registry invariants at ${REG}: ${(e as Error).message.split(String.fromCharCode(10))[0]}`);
+    }
+  } else {
+    info("MANDATE_REGISTRY unset — skipping live invariant checks");
+  }
+
   // wallets ---------------------------------------------------------------
   //
   // Addresses are DERIVED from the keys in .env, never listed separately — a

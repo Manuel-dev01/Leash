@@ -195,7 +195,13 @@ async function main() {
       if (d.eventName === "DeadhandFailed") console.log(`  DeadhandFailed on ${(d.args as never as {marketId:Hex}).marketId.slice(0,14)}...`);
     } catch { /* other */ }
   }
-  console.log(`  irrelevant finalizations skipped early: ${skipped}`);
+  // Derived, not counted from events: the hot path deliberately emits nothing,
+  // so `skipped` from DeadhandSkipped is now always 0 and would be a zero in a
+  // log that looks like a measurement.
+  const settles = await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "marketsSettled" }) as bigint;
+  const derivedSkips = (invAfter - invBefore) - settles;
+  console.log(`  skipped (derived: invocations - marketsSettled): ${derivedSkips}`);
+  if (skipped > 0) console.log(`  (${skipped} shape-skips also emitted)`);
 
   // ---- the measured cap ---------------------------------------------------
   if (ourSettle && ourSettle.processed > 0n) {

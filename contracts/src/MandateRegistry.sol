@@ -136,6 +136,19 @@ contract MandateRegistry {
     /// marketId => the BinaryMarket contract, recorded at first placement.
     mapping(bytes32 => address) public marketAddressOf;
 
+    /**
+     * Escrow the pool still owes back, attributed PER MANDATE.
+     *
+     * The venue refunds a resting order's escrow to the order's owner — us —
+     * ASYNCHRONOUSLY, after settlement has already run. An earlier version swept
+     * `balance - totalOwed` to whichever delegator happened to be settling,
+     * which is a silent misallocation: observed live, a 3-mandate settlement
+     * paid out the escrow of twelve unrelated mandates. Attribution is therefore
+     * reserved at settlement, exactly as exposure is reserved at placement.
+     */
+    mapping(uint256 => uint256) public refundClaim;
+    uint256 public totalRefundClaim;
+
     // ---- events ------------------------------------------------------------
 
     event MandateCreated(
@@ -426,15 +439,13 @@ contract MandateRegistry {
             emit MandateRevoked(r.mandateId, msg.sender, "deadhand");
         }
 
-        // Sweep anything sitting here to the delegator. Between transactions the
-        // invariant holds this at zero, so a non-zero balance at finalization is
-        // returned escrow or payout — money moving to the party who did NOT trade.
-        uint256 free = collateral.balanceOf(address(this));
-        if (free > totalOwed) {
-            uint256 amount = free - totalOwed;
-            _returnTo(m.delegator, amount);
-            emit PayoutSwept(r.mandateId, m.delegator, amount, marketId);
-        }
+        // Book what the pool owes THIS mandate back, then pay whatever has
+        // already arrived. The rest is claimable by anyone, at any time, via
+        // sweepRefunds — so the common path needs no intervention and the
+        // uncommon one needs no privilege.
+        refundClaim[r.mandateId] += release;
+        totalRefundClaim += release;
+        _payRefund(r.mandateId, marketId);
     }
 
     /// Batch form, bounded by the caller. The handler passes a capped slice.
@@ -469,6 +480,32 @@ contract MandateRegistry {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Push a mandate's booked refund to its delegator, as far as the balance
+     * allows. PERMISSIONLESS on purpose: if only the delegator could trigger
+     * this, funds would sit stranded until they acted and "holds no funds" would
+     * quietly mean "holds no funds eventually, if someone remembers".
+     */
+    function sweepRefunds(uint256 mandateId) external {
+        _payRefund(mandateId, bytes32(0));
+    }
+
+    function _payRefund(uint256 mandateId, bytes32 marketId) private {
+        uint256 claim = refundClaim[mandateId];
+        if (claim == 0) return;
+        uint256 bal = collateral.balanceOf(address(this));
+        if (bal <= totalOwed) return;
+        uint256 avail = bal - totalOwed;
+        uint256 pay = claim < avail ? claim : avail;
+        if (pay == 0) return;
+
+        refundClaim[mandateId] = claim - pay;
+        totalRefundClaim -= pay;
+        address to = mandates[mandateId].delegator;
+        _returnTo(to, pay);
+        emit PayoutSwept(mandateId, to, pay, marketId);
     }
 
     // ---- pull-payment fallback --------------------------------------------
@@ -551,8 +588,20 @@ contract MandateRegistry {
         return m.exists && !m.revoked && block.timestamp < m.expiry;
     }
 
-    /// The claim, as a function a judge can call: we hold nothing but what we owe.
+    /**
+     * The claim, as a function a judge can call: every unit here is owed to a
+     * NAMED party. `totalOwed` is failed push-payments; `totalRefundClaim` is
+     * escrow the venue has yet to return, booked per mandate. Anything beyond
+     * those two is unattributed and is a bug.
+     */
     function holdsNoFunds() external view returns (bool) {
-        return collateral.balanceOf(address(this)) == totalOwed;
+        return collateral.balanceOf(address(this)) <= totalOwed + totalRefundClaim;
+    }
+
+    /// Collateral here that belongs to nobody in particular. Must always be 0.
+    function unattributed() external view returns (uint256) {
+        uint256 bal = collateral.balanceOf(address(this));
+        uint256 spoken = totalOwed + totalRefundClaim;
+        return bal > spoken ? bal - spoken : 0;
     }
 }

@@ -227,7 +227,7 @@ async function main() {
         const d = decodeEventLog({ abi: orderBookEventsAbi, data: log.data, topics: log.topics as never });
         const a = d.args as unknown as Record<string, bigint>;
         filledQty += a.quantityFilled ?? 0n;
-      } catch { /* shape drift */ }
+      } catch (err) { console.log(`  WARN OrderFilled decode failed: ${(err as Error).message.split(String.fromCharCode(10))[0]}`); }
     }
   }
   if (placedId === null) {

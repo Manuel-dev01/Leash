@@ -439,4 +439,67 @@ contract MandateEnforcementTest is Test {
         vm.expectRevert(MandateRegistry.UnknownMarket.selector);
         reg.settleFinalizedMarket(bytes32(uint256(0xDEAD)), 10);
     }
+
+    // ---- asynchronous escrow: the defect the mock was hiding ---------------
+
+    /**
+     * The venue refunds a resting order's escrow to the order owner — us —
+     * AFTER settlement has run. The mock refunds synchronously, so
+     * holdsNoFunds() stayed green in this suite while the deployed registry
+     * held 0.24 tUSDC. This reproduces the real ordering.
+     */
+    function test_lateEscrow_isAttributedToTheRightMandate() public {
+        address other = address(0xA11CE);
+        uint256 idA = _mandate(1_000_000, 10_000_000);
+        uint256 idB = _mandateFor(other, 1_000_000, 10_000_000);
+
+        _place(idA, 500_000, 1_000_000);
+        vm.prank(other);
+        reg.placeForDelegator(idB, MARKET, address(pool), 0, 500_000, 1_000_000, uint64(block.timestamp + 60));
+
+        pool.market().setResolved(true);
+        reg.settleFinalizedMarket(MARKET, 10);
+
+        // Escrow arrives LATE, as a lump, after settlement.
+        usdc.mint(address(reg), 1_000_000);
+
+        assertEq(reg.refundClaim(idA), 500_000, "A is owed its own escrow");
+        assertEq(reg.refundClaim(idB), 500_000, "B is owed its own escrow");
+
+        uint256 aBefore = usdc.balanceOf(delegator);
+        uint256 bBefore = usdc.balanceOf(other);
+
+        // Anyone can trigger it — no privilege, no waiting on the delegator.
+        vm.prank(stranger);
+        reg.sweepRefunds(idA);
+        vm.prank(stranger);
+        reg.sweepRefunds(idB);
+
+        assertEq(usdc.balanceOf(delegator) - aBefore, 500_000, "A got exactly its own");
+        assertEq(usdc.balanceOf(other) - bBefore, 500_000, "B got exactly its own");
+        assertEq(reg.unattributed(), 0, "nothing belongs to nobody");
+        assertTrue(reg.holdsNoFunds());
+    }
+
+    /**
+     * The misallocation this replaced: a pooled sweep paid one delegator the
+     * escrow of unrelated mandates. Observed live before the fix.
+     */
+    function test_settlingOneMandateDoesNotPayItAnothersEscrow() public {
+        address other = address(0xA11CE);
+        uint256 idA = _mandate(1_000_000, 10_000_000);
+        uint256 idB = _mandateFor(other, 1_000_000, 10_000_000);
+        _place(idA, 500_000, 1_000_000);
+        vm.prank(other);
+        reg.placeForDelegator(idB, MARKET, address(pool), 0, 500_000, 1_000_000, uint64(block.timestamp + 60));
+
+        pool.market().setResolved(true);
+        reg.settleFinalizedMarket(MARKET, 10);
+        usdc.mint(address(reg), 1_000_000); // both escrows arrive together
+
+        uint256 aBefore = usdc.balanceOf(delegator);
+        reg.sweepRefunds(idA);
+        assertEq(usdc.balanceOf(delegator) - aBefore, 500_000, "A must NOT receive B's escrow");
+        assertEq(reg.refundClaim(idB), 500_000, "B's claim survives untouched");
+    }
 }
