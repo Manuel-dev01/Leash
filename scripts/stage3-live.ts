@@ -155,9 +155,13 @@ async function main() {
   });
   await pub.waitForTransactionReceipt({ hash: h });
   const subId = await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "subscriptionId" }) as bigint;
-  console.log(`  subscribed id=${subId}, waiting ${ttl + 90}s for resolution...`);
+  // Finalization LAGS expiry by a variable amount — a 90s tail missed it twice,
+  // producing a run with zero settles that could be mistaken for a broken
+  // handler. 210s covers the lag observed so far.
+  const tail = Number(process.env.TAIL_S ?? 210);
+  console.log(`  subscribed id=${subId}, waiting ${ttl + tail}s for resolution...`);
 
-  await sleep((ttl + 90) * 1000);
+  await sleep((ttl + tail) * 1000);
 
   try { const u = await wD.writeContract({ address: HANDLER, abi: hndAbi, functionName: "unsubscribeNow" }); await pub.waitForTransactionReceipt({ hash: u }); console.log("  unsubscribed"); }
   catch { console.log("  unsubscribe failed"); }
