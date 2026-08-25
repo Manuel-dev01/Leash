@@ -91,8 +91,16 @@ async function main() {
   const now = Math.floor(Date.now() / 1000);
   const withTtl = live.map((m) => ({ m, ttl: Number(m.expiry) - now })).sort((a, b) => a.ttl - b.ttl);
   console.log(`  ${found.length} created / ${live.length} tradable; ttls(s): ${withTtl.map((x) => x.ttl).join(", ")}`);
-  const soon = withTtl.filter((x) => x.ttl > 75 && x.ttl < 900)[0];
-  if (!soon) throw new Error(`no market finalizing in 75-900s (live: ${live.length})`);
+  // Seeding N mandates plus N orders is ~2 transactions each at ~3.5s, so pick a
+  // market whose ttl comfortably exceeds that. Choosing the SOONEST market meant
+  // subscribing after it had already resolved — finalization lands at expiry
+  // +/-60s and can be up to 300s EARLY (§4.6 B13), so "soonest" is the wrong
+  // heuristic entirely.
+  const setupS = MANDATES * 7 + 30;
+  const lo = setupS + 90;
+  const soon = withTtl.filter((x) => x.ttl > lo && x.ttl < 1800)[0];
+  if (!soon) throw new Error(`no market with ttl in ${lo}-1800s (setup needs ~${setupS}s; live: ${live.length})`);
+  console.log(`  setup needs ~${setupS}s, so requiring ttl > ${lo}s`);
   const { m: mk, ttl } = soon;
   console.log(`  market ${mk.asset} ttl=${ttl}s  marketId=${mk.marketId.slice(0, 18)}...`);
   console.log(`  pool   ${mk.pool}\n`);
