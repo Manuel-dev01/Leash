@@ -155,13 +155,25 @@ async function main() {
   });
   await pub.waitForTransactionReceipt({ hash: h });
   const subId = await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "subscriptionId" }) as bigint;
-  // Finalization LAGS expiry by a variable amount — a 90s tail missed it twice,
-  // producing a run with zero settles that could be mistaken for a broken
-  // handler. 210s covers the lag observed so far.
-  const tail = Number(process.env.TAIL_S ?? 210);
-  console.log(`  subscribed id=${subId}, waiting ${ttl + tail}s for resolution...`);
-
-  await sleep((ttl + tail) * 1000);
+  // FINALIZATION LAGS MARKET EXPIRY BY AN UNPREDICTABLE AMOUNT.
+  //
+  // Measured: a market with ttl 263s had still not finalized 503s later. Three
+  // consecutive runs reported "did not settle" for this reason alone, which
+  // reads exactly like a broken handler — the earlier runs that DID settle were
+  // lucky, not correct.
+  //
+  // So do not guess a duration: POLL until the handler actually settles, and
+  // stop as soon as it does. A fixed window is a coin flip; this is a wait.
+  const deadline = Date.now() + Number(process.env.MAX_WAIT_S ?? 900) * 1000;
+  let settledNow = 0n;
+  console.log(`  subscribed id=${subId}, polling until settle (max ${Math.round((deadline - Date.now()) / 1000)}s)...`);
+  while (Date.now() < deadline) {
+    await sleep(15_000);
+    settledNow = await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "marketsSettled" }) as bigint;
+    const pend = await pub.readContract({ address: REGISTRY, abi: regAbi, functionName: "pendingSettlement", args: [mk.marketId] }) as bigint;
+    if (settledNow > 0n && pend === 0n) { console.log(`  settled after ${Math.round((Date.now() - (deadline - Number(process.env.MAX_WAIT_S ?? 900) * 1000)) / 1000)}s`); break; }
+  }
+  if (settledNow === 0n) console.log("  WARNING: hit the poll deadline with no settle");
 
   try { const u = await wD.writeContract({ address: HANDLER, abi: hndAbi, functionName: "unsubscribeNow" }); await pub.waitForTransactionReceipt({ hash: u }); console.log("  unsubscribed"); }
   catch { console.log("  unsubscribe failed"); }
