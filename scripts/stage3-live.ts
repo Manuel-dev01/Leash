@@ -129,7 +129,11 @@ async function main() {
   // exactly the dead exposure the handler exists to release.
   const price = 20_000n;
   const qty = 1_000_000n;
-  const expireNs = BigInt(Date.now() + (ttl + 120) * 1000) * 1_000_000n;
+  // Order expiry is CAPPED AT THE MARKET'S OWN EXPIRY — exceeding it reverts
+  // OrderExpiryBeyondMarket (0xd3dea628). Sit just inside it so the order is
+  // still open when the market resolves, which is exactly the dead exposure the
+  // Deadhand exists to release.
+  const expireNs = (mk.expiry - 2n) * 1_000_000_000n;
   for (const id of ids) {
     const h = await wG.writeContract({
       address: REGISTRY, abi: regAbi, functionName: "placeForDelegator",
