@@ -98,8 +98,12 @@ async function main() {
   // heuristic entirely.
   const setupS = MANDATES * 7 + 30;
   const lo = setupS + 90;
-  const soon = withTtl.filter((x) => x.ttl > lo && x.ttl < 1800)[0];
-  if (!soon) throw new Error(`no market with ttl in ${lo}-1800s (setup needs ~${setupS}s; live: ${live.length})`);
+  // Markets come in SERIES, not a continuum: observed ttls cluster at
+  // 78 / 1878 / 12678 s, so a narrow band can fall entirely in a gap between
+  // series and report "no market" on a perfectly healthy venue. Take the
+  // soonest that clears setup, from a wide band.
+  const soon = withTtl.filter((x) => x.ttl > lo && x.ttl < 3600)[0];
+  if (!soon) throw new Error(`no market with ttl in ${lo}-3600s (setup needs ~${setupS}s; live: ${live.length}; ttls: ${withTtl.map((x) => x.ttl).join(",")})`);
   console.log(`  setup needs ~${setupS}s, so requiring ttl > ${lo}s`);
   const { m: mk, ttl } = soon;
   console.log(`  market ${mk.asset} ttl=${ttl}s  marketId=${mk.marketId.slice(0, 18)}...`);
