@@ -145,17 +145,26 @@ contract DeadhandHandler is SomniaEventHandler {
 
         // MarketFinalized(bytes32 indexed marketId, address indexed pool, uint256 marketKey)
         if (eventTopics.length < 3 || data.length < 32) {
-            emit DeadhandSkipped(bytes32(0), "shape");
+            emit DeadhandSkipped(bytes32(0), "shape"); // rare, so worth naming
             return;
         }
         bytes32 marketId = eventTopics[1];
         address pool = address(uint160(uint256(eventTopics[2])));
 
-        // Most finalizations on this venue are nothing to do with us. Exit before
-        // touching anything expensive — this is the ~789 gas path that makes one
-        // subscription for the whole venue affordable.
+        // Most finalizations on this venue are nothing to do with us, so this is
+        // the hot path: it runs on every resolution the venue produces and only
+        // rarely leads to work.
+        //
+        // MEASURED at ~109,000 gas charged (~0.0007 STT), NOT the 789 gas a probe
+        // handler suggested — the external call into the registry, the topic
+        // decode and the event dominate. At ~1 finalization per 10s that is
+        // ~6.4 STT/day to sit armed, which is why we subscribe for demo windows
+        // and unsubscribe after rather than leaving it running.
+        //
+        // The skip emits nothing: a string in an event on the path taken by
+        // every irrelevant resolution is pure cost, and the count is derivable
+        // from `invocations` minus `marketsSettled`.
         if (registry.pendingSettlement(marketId) == 0) {
-            emit DeadhandSkipped(marketId, "no mandates");
             return;
         }
 
