@@ -86,14 +86,13 @@ async function main() {
 
   // ---- pick a market that will finalize SOON ------------------------------
   const disc = ecClient(RPC);
-  const found = await discoverMarkets(disc, { windows: 14 });
+  const found = await discoverMarkets(disc, { windows: 30 });
   const live = await tradableMarkets(disc, found, { headroomSec: 70n, limit: 40 });
   const now = Math.floor(Date.now() / 1000);
-  const soon = live
-    .map((m) => ({ m, ttl: Number(m.expiry) - now }))
-    .filter((x) => x.ttl > 75 && x.ttl < 420)
-    .sort((a, b) => a.ttl - b.ttl)[0];
-  if (!soon) throw new Error(`no market finalizing in 75-420s (live: ${live.length})`);
+  const withTtl = live.map((m) => ({ m, ttl: Number(m.expiry) - now })).sort((a, b) => a.ttl - b.ttl);
+  console.log(`  ${found.length} created / ${live.length} tradable; ttls(s): ${withTtl.map((x) => x.ttl).join(", ")}`);
+  const soon = withTtl.filter((x) => x.ttl > 75 && x.ttl < 900)[0];
+  if (!soon) throw new Error(`no market finalizing in 75-900s (live: ${live.length})`);
   const { m: mk, ttl } = soon;
   console.log(`  market ${mk.asset} ttl=${ttl}s  marketId=${mk.marketId.slice(0, 18)}...`);
   console.log(`  pool   ${mk.pool}\n`);
@@ -171,7 +170,7 @@ async function main() {
   for (let hi = head; hi > fromBlock; hi -= SPAN + 1n) {
     const lo = hi - SPAN > fromBlock ? hi - SPAN : fromBlock;
     const page = await pub.getLogs({ address: HANDLER, fromBlock: lo, toBlock: hi });
-    logs.push(...(page as never));
+    logs.push(...(page as unknown as typeof logs));
     if (lo === fromBlock) break;
   }
 

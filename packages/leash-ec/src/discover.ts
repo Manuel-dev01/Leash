@@ -133,22 +133,49 @@ export async function discoverMarkets(
  *     recycled, so a pool that served our market a minute ago may now be
  *     serving a different one; comparing `params.market` is what catches it.
  */
-export async function tradableMarkets(
+export interface TradableResult {
+  live: DiscoveredMarket[];
+  checked: number;
+  errors: number;
+}
+
+/**
+ * Filter to markets that will actually accept an order, verified on-chain.
+ *
+ * Three independent checks, because each catches a different failure:
+ *   - expiry in the future, with headroom (a window can close between our
+ *     snapshot and our inclusion — EC gotcha 8)
+ *   - the market is neither resolved nor voided
+ *   - the POOL still points at THIS market and is not finalized. Pools are
+ *     recycled, so a pool that served our market a minute ago may now be
+ *     serving a different one; comparing `params.market` is what catches it.
+ *
+ * BOUNDED, and it REPORTS ITS FAILURES. An earlier version walked every
+ * candidate (126 markets x 3 reads) and swallowed errors in a bare catch, so
+ * RPC rate-limiting came back as "0 tradable" — indistinguishable from a quiet
+ * venue, and it cost a Stage 3 run to diagnose. Callers get the error count so a
+ * degraded RPC cannot masquerade as an empty market list.
+ */
+export async function tradableMarketsDetailed(
   client: PublicClient,
   markets: DiscoveredMarket[],
-  opts: { headroomSec?: bigint; limit?: number } = {},
-): Promise<DiscoveredMarket[]> {
+  opts: { headroomSec?: bigint; limit?: number; maxChecks?: number } = {},
+): Promise<TradableResult> {
   const headroom = opts.headroomSec ?? 60n;
   const now = BigInt(Math.floor(Date.now() / 1000));
   const limit = opts.limit ?? 8;
+  const maxChecks = opts.maxChecks ?? 24;
   const live: DiscoveredMarket[] = [];
+  let checked = 0;
+  let errors = 0;
 
   const candidates = markets
     .filter((m) => m.expiry > now + headroom && m.tradingStart <= now)
-    .sort((a, b) => Number(b.expiry - a.expiry));
+    .sort((a, b) => Number(a.expiry - b.expiry)); // soonest first: most useful for a demo
 
   for (const m of candidates) {
-    if (live.length >= limit) break;
+    if (live.length >= limit || checked >= maxChecks) break;
+    checked++;
     try {
       const params = (await client.readContract({
         address: m.pool, abi: binaryPoolParamsAbi, functionName: "getBinaryPoolParams",
@@ -161,7 +188,25 @@ export async function tradableMarkets(
       ]);
       if (resolved || voided) continue;
       live.push(m);
-    } catch { /* not readable — skip */ }
+    } catch {
+      errors++; // counted, not hidden
+    }
   }
-  return live;
+  return { live, checked, errors };
+}
+
+/** Convenience wrapper. Throws if every check errored — that is an RPC problem, not an empty venue. */
+export async function tradableMarkets(
+  client: PublicClient,
+  markets: DiscoveredMarket[],
+  opts: { headroomSec?: bigint; limit?: number; maxChecks?: number } = {},
+): Promise<DiscoveredMarket[]> {
+  const r = await tradableMarketsDetailed(client, markets, opts);
+  if (r.live.length === 0 && r.errors > 0 && r.errors === r.checked) {
+    throw new Error(
+      `tradableMarkets: all ${r.checked} on-chain checks failed. This is an RPC ` +
+        "problem, not an empty venue — do not report it as 'no markets'.",
+    );
+  }
+  return r.live;
 }
