@@ -19,6 +19,7 @@ import {
   type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { installUnwind, emergencyUnsubscribe } from "./unwind.js";
 import { EC, NETWORK, TOPICS } from "../packages/leash-ec/src/constants.js";
 
 const RPC = process.env.EC_RPC_URL ?? "https://api.infra.testnet.somnia.network";
@@ -95,4 +96,8 @@ async function main() {
   console.log(`   the measured one and does not depend on that assumption)\n`);
 }
 
-main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+// This script arms a subscription, so it must be able to disarm one.
+installUnwind();
+main()
+  .then(() => process.exit(0))
+  .catch(async (e) => { console.error(e); await emergencyUnsubscribe(); process.exit(1); });

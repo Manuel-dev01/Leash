@@ -16,6 +16,7 @@ import {
   parseAbi, decodeEventLog, keccak256, toHex, type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { installUnwind, emergencyUnsubscribe } from "./unwind.js";
 import { EC, NETWORK, OrderKind, TOPICS } from "../packages/leash-ec/src/constants.js";
 import { ecClient, discoverMarkets, tradableMarkets } from "../packages/leash-ec/src/discover.js";
 
@@ -274,4 +275,8 @@ async function main() {
   console.log(`                Layer 1 settles with no handler in the path.\n`);
 }
 
-main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+// This script arms a subscription, so it must be able to disarm one.
+installUnwind();
+main()
+  .then(() => process.exit(0))
+  .catch(async (e) => { console.error(e); await emergencyUnsubscribe(); process.exit(1); });
