@@ -113,16 +113,19 @@ async function main() {
   // Old mandates are revoked rather than left lying around, so a rehearsal never
   // inherits exposure from the previous one and rehearsal fifteen behaves like
   // rehearsal one.
-  let retired = 0;
+  let retired = 0, retireFailed = 0;
   for (let i = 1n; i < next; i++) {
     if (!(await read<boolean>("isActive", [i]))) continue;
     try {
       const h = await wD.writeContract({ address: REGISTRY, abi: regAbi, functionName: "revoke", args: [i] as never });
       await pub.waitForTransactionReceipt({ hash: h });
       retired++;
-    } catch { /* not ours, or already gone */ }
+    } catch { retireFailed++; }
   }
   if (retired) console.log(`retired ${retired} mandate(s) from the previous run`);
+  // A silent failure here means a rehearsal inherits live exposure from the last
+  // one, which is precisely how run fifteen stops matching run one.
+  if (retireFailed) console.log(`WARNING: ${retireFailed} mandate(s) could NOT be retired — state is NOT clean`);
 
   // ---- pick a market -----------------------------------------------------
   const disc = ecClient(RPC);

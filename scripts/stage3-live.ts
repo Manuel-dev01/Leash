@@ -46,7 +46,7 @@ const erc20 = parseAbi([
 const regAbi = parseAbi([
   "function createMandate(address,uint128,uint128,uint64,bytes32[]) returns (uint256)",
   "function placeForDelegator(uint256,bytes32,address,uint8,uint256,uint256,uint64) returns (uint128)",
-  "function settleFinalizedMarket(bytes32,uint256) returns (uint256,bool)",
+  "function settleFinalizedMarket(bytes32,uint256) returns (uint256,uint256,bool)",
   "function pendingSettlement(bytes32) view returns (uint256)",
   "function remainingExposure(uint256) view returns (uint256)",
   "function isActive(uint256) view returns (bool)",
@@ -63,7 +63,7 @@ const hndAbi = parseAbi([
   "function marketsSettled() view returns (uint256)",
   "function subscriptionId() view returns (uint256)",
   "function withdraw()",
-  "event Deadhand(bytes32 indexed marketId, address indexed pool, uint256 processed, bool drained, uint256 gasUsed)",
+  "event Deadhand(bytes32 indexed marketId, address indexed pool, uint256 processed, uint256 failed, bool drained, uint256 gasUsed)",
   "event DeadhandSkipped(bytes32 indexed marketId, string reason)",
   "event DeadhandFailed(bytes32 indexed marketId, bytes reason)",
 ]);
@@ -184,8 +184,8 @@ async function main() {
     try {
       const d = decodeEventLog({ abi: hndAbi, data: l.data, topics: l.topics as never });
       if (d.eventName === "Deadhand") {
-        const a = d.args as unknown as { marketId: Hex; processed: bigint; drained: boolean; gasUsed: bigint };
-        console.log(`  Deadhand: market ${a.marketId.slice(0, 14)}... processed=${a.processed} drained=${a.drained} gas=${a.gasUsed}`);
+        const a = d.args as unknown as { marketId: Hex; processed: bigint; failed: bigint; drained: boolean; gasUsed: bigint };
+        console.log(`  Deadhand: market ${a.marketId.slice(0, 14)}... processed=${a.processed} failed=${a.failed} drained=${a.drained} gas=${a.gasUsed}`);
         console.log(`            ${NETWORK.explorer}/tx/${l.transactionHash}`);
         if (a.marketId.toLowerCase() === mk.marketId.toLowerCase()) {
           ourSettle = { processed: a.processed, drained: a.drained, gasUsed: a.gasUsed, tx: l.transactionHash };

@@ -7,7 +7,7 @@ import {SomniaExtensions} from "@somnia-chain/reactivity-contracts/contracts/int
 interface IMandateRegistry {
     function settleFinalizedMarket(bytes32 marketId, uint256 maxItems)
         external
-        returns (uint256 processed, bool drained);
+        returns (uint256 processed, uint256 failed, bool drained);
     function pendingSettlement(bytes32 marketId) external view returns (uint256);
 }
 
@@ -62,6 +62,7 @@ contract DeadhandHandler is SomniaEventHandler {
         bytes32 indexed marketId,
         address indexed pool,
         uint256 processed,
+        uint256 failed,
         bool drained,
         uint256 gasUsed
     );
@@ -170,9 +171,9 @@ contract DeadhandHandler is SomniaEventHandler {
 
         // The registry isolates each mandate internally; this wrapper stops a
         // registry-level failure from reverting the whole invocation.
-        try registry.settleFinalizedMarket(marketId, batchCap) returns (uint256 processed, bool drained) {
+        try registry.settleFinalizedMarket(marketId, batchCap) returns (uint256 processed, uint256 failed, bool drained) {
             ++marketsSettled;
-            emit Deadhand(marketId, pool, processed, drained, g0 - gasleft());
+            emit Deadhand(marketId, pool, processed, failed, drained, g0 - gasleft());
         } catch (bytes memory reason) {
             emit DeadhandFailed(marketId, reason);
         }

@@ -94,6 +94,7 @@ export async function discoverMarkets(
   const head = await client.getBlockNumber();
   const out: DiscoveredMarket[] = [];
   const seen = new Set<string>();
+  let decodeFailures = 0;
 
   for (let i = 0; i < windows; i++) {
     const hi = head - BigInt(i) * BigInt(NETWORK.maxGetLogsBlockRange);
@@ -116,8 +117,18 @@ export async function discoverMarkets(
           collateral: a.collateral, asset: a.asset, strike: a.strike,
           tradingStart: a.tradingStart, expiry: a.expiry, nonce: a.nonce,
         });
-      } catch { /* shape drift — skip rather than crash discovery */ }
+      } catch {
+        // Counted, not hidden. If MarketCreated's shape drifts, discovery would
+        // otherwise just return fewer markets and look like a quiet venue.
+        decodeFailures++;
+      }
     }
+  }
+  if (decodeFailures > 0 && out.length === 0) {
+    throw new Error(
+      `discoverMarkets: ${decodeFailures} MarketCreated logs matched the pinned ` +
+        "topic0 but none decoded. The event shape changed — do not report this as an empty venue.",
+    );
   }
   return out;
 }

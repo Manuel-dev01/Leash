@@ -332,14 +332,15 @@ contract MandateEnforcementTest is Test {
         for (uint256 i = 0; i < 5; ++i) _place(id, 500_000, 1_000_000);
         assertEq(reg.pendingSettlement(MARKET), 5);
 
-        (uint256 p1, bool d1) = reg.settleFinalizedMarket(MARKET, 2);
+        pool.market().setResolved(true);
+        (uint256 p1,, bool d1) = reg.settleFinalizedMarket(MARKET, 2);
         assertEq(p1, 2); assertFalse(d1, "not drained after 2 of 5");
         assertEq(reg.pendingSettlement(MARKET), 3);
 
-        (uint256 p2, bool d2) = reg.settleFinalizedMarket(MARKET, 2);
+        (uint256 p2,, bool d2) = reg.settleFinalizedMarket(MARKET, 2);
         assertEq(p2, 2); assertFalse(d2);
 
-        (uint256 p3, bool d3) = reg.settleFinalizedMarket(MARKET, 2);
+        (uint256 p3,, bool d3) = reg.settleFinalizedMarket(MARKET, 2);
         assertEq(p3, 1, "only the straggler remained");
         assertTrue(d3, "drained");
         assertEq(reg.pendingSettlement(MARKET), 0);
@@ -366,7 +367,8 @@ contract MandateEnforcementTest is Test {
         usdc.setReverting(hostile, true);
         pool.setConsumeBps(5_000); // leave a remainder so a sweep is attempted
 
-        (uint256 processed, bool drained) = reg.settleFinalizedMarket(MARKET, 10);
+        pool.market().setResolved(true);
+        (uint256 processed,, bool drained) = reg.settleFinalizedMarket(MARKET, 10);
         assertTrue(drained, "batch completed despite a hostile member");
         assertGe(processed, 1, "at least the honest mandate settled");
 
@@ -378,6 +380,7 @@ contract MandateEnforcementTest is Test {
         uint256 id = _mandate(1_000_000, 1_000_000);
         _place(id, 1_000_000, 1_000_000);
         vm.warp(expiry + 1); // expiry is a breach condition
+        pool.market().setResolved(true);
         reg.settleFinalizedMarket(MARKET, 10);
         (,,,,, , bool revoked,) = reg.mandates(id);
         assertTrue(revoked, "the deadhand revokes on settle");
@@ -386,10 +389,54 @@ contract MandateEnforcementTest is Test {
     function test_settleFinalizedMarket_isIdempotent() public {
         uint256 id = _mandate(1_000_000, 10_000_000);
         _place(id, 500_000, 1_000_000);
+        pool.market().setResolved(true);
         reg.settleFinalizedMarket(MARKET, 10);
         (,,,, uint128 a,,,) = reg.mandates(id);
+        pool.market().setResolved(true);
         reg.settleFinalizedMarket(MARKET, 10); // cursor is exhausted; must be a no-op
         (,,,, uint128 b,,,) = reg.mandates(id);
         assertEq(a, b, "re-settling must not double-release");
+    }
+
+    /**
+     * THE EXPLOIT THIS CHECK EXISTS FOR.
+     *
+     * settleFinalizedMarket is permissionless and releases reserved exposure.
+     * Without proof that the market actually resolved it is an exposure-reset
+     * button: a delegate frees its own counter while its orders are still
+     * resting, then places again, and maxCumulativeExposure means nothing.
+     */
+    function test_cannotReleaseExposureOnALiveMarket() public {
+        uint256 id = _mandate(700_000, 1_000_000);
+        _place(id, 700_000, 1_000_000);
+        (,,,, uint128 used,,,) = reg.mandates(id);
+        assertEq(used, 700_000);
+
+        // Market is still live.
+        vm.expectRevert(MandateRegistry.MarketNotResolved.selector);
+        reg.settleFinalizedMarket(MARKET, 10);
+
+        (,,,, uint128 stillUsed,,,) = reg.mandates(id);
+        assertEq(stillUsed, 700_000, "exposure must NOT be releasable early");
+
+        // And the cap still bites, which is the point.
+        vm.prank(delegate);
+        vm.expectRevert(
+            abi.encodeWithSelector(MandateRegistry.ExceedsCumulative.selector, uint256(1_400_000), uint128(1_000_000))
+        );
+        reg.placeForDelegator(id, MARKET, address(pool), 0, 700_000, 1_000_000, uint64(block.timestamp + 60));
+    }
+
+    function test_voidedMarketAlsoSettles() public {
+        uint256 id = _mandate(1_000_000, 10_000_000);
+        _place(id, 500_000, 1_000_000);
+        pool.market().setVoided(true);
+        (uint256 n,,) = reg.settleFinalizedMarket(MARKET, 10);
+        assertEq(n, 1, "a voided market is over too");
+    }
+
+    function test_settleUnknownMarket_reverts() public {
+        vm.expectRevert(MandateRegistry.UnknownMarket.selector);
+        reg.settleFinalizedMarket(bytes32(uint256(0xDEAD)), 10);
     }
 }

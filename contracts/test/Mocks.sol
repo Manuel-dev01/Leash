@@ -51,8 +51,16 @@ contract MockUSDC {
  * Stands in for a BinaryPool. Takes `consumeBps` of the offered cost, so a
  * partial fill (taker charged the fill price, not its offer) is reproducible.
  */
+contract MockBinaryMarket {
+    bool public isResolved;
+    bool public isVoided;
+    function setResolved(bool v) external { isResolved = v; }
+    function setVoided(bool v) external { isVoided = v; }
+}
+
 contract MockBinaryPool {
     MockUSDC public immutable token;
+    MockBinaryMarket public immutable market;
     uint128 public nextId = 1000;
     uint256 public consumeBps = 10_000; // 100% by default
     bool public succeed = true;
@@ -60,7 +68,15 @@ contract MockBinaryPool {
     function setSucceed(bool v) external { succeed = v; }
     function setConsumeBps(uint256 v) external { consumeBps = v; }
 
-    constructor(MockUSDC t) { token = t; }
+    constructor(MockUSDC t) { token = t; market = new MockBinaryMarket(); }
+
+    function getBinaryPoolParams() external view returns (
+        address, address, address, uint256, uint256, uint256, uint256,
+        address, uint256, uint256, uint256, uint256, address, uint64, bool
+    ) {
+        return (address(token), address(market), address(0), 0, 0, 1e6, 0,
+                address(0), 0, 0, 0, 0, address(0), 1, false);
+    }
 
     function placeBinaryOrder(
         uint8, uint256 price, uint256 quantity, uint64, uint8, uint8, address, uint96, uint64

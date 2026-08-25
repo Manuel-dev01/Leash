@@ -43,6 +43,21 @@ interface IERC20 {
     function decimals() external view returns (uint8);
 }
 
+interface IBinaryMarket {
+    function isResolved() external view returns (bool);
+    function isVoided() external view returns (bool);
+}
+
+interface IBinaryPoolParams {
+    function getBinaryPoolParams() external view returns (
+        address collateralToken, address market, address outcomeToken,
+        uint256 yesId, uint256 noId, uint256 oneCollateral, uint256 setBacking,
+        address feeRecipient, uint256 makerFeeBpsTimes1k, uint256 takerFeeBpsTimes1k,
+        uint256 maxBuilderFeeBpsTimes1k, uint256 settlementFeeBpsTimes1k,
+        address settlement, uint64 marketNonce, bool finalized
+    );
+}
+
 interface IBinaryPool {
     function placeBinaryOrder(
         uint8 kind,
@@ -118,6 +133,8 @@ contract MandateRegistry {
     mapping(bytes32 => uint256) public settleCursor;
     /// mandateId => marketId => outcome quantity bought, for the payout sweep.
     mapping(uint256 => mapping(bytes32 => uint256)) public position;
+    /// marketId => the BinaryMarket contract, recorded at first placement.
+    mapping(bytes32 => address) public marketAddressOf;
 
     // ---- events ------------------------------------------------------------
 
@@ -135,6 +152,7 @@ contract MandateRegistry {
     event ReturnFailed(address indexed to, uint256 amount);
     event OwedClaimed(address indexed by, uint256 amount);
     event PayoutSwept(uint256 indexed mandateId, address indexed to, uint256 amount, bytes32 marketId);
+    event SettleFailed(bytes32 indexed marketId, bytes32 reservationKey, bytes reason);
 
     // ---- errors ------------------------------------------------------------
 
@@ -151,6 +169,8 @@ contract MandateRegistry {
     error Reentrancy();
     error NothingOwed();
     error BadExpiry();
+    error MarketNotResolved();
+    error UnknownMarket();
 
     // ---- reentrancy guard --------------------------------------------------
     //
@@ -275,6 +295,14 @@ contract MandateRegistry {
 
         collateral.approve(pool, 0);
 
+        // Bind marketId to its BinaryMarket on first use, read from the pool
+        // itself rather than trusted from the caller. Settlement needs this to
+        // prove a market really resolved.
+        if (marketAddressOf[marketId] == address(0)) {
+            (, address mkt,,,,,,,,,,,,,) = IBinaryPoolParams(pool).getBinaryPoolParams();
+            marketAddressOf[marketId] = mkt;
+        }
+
         bytes32 rk = _key(pool, orderId);
         reservations[rk] = Reservation({mandateId: mandateId, reserved: uint128(cost), open: true});
         marketReservations[marketId].push(rk);
@@ -346,16 +374,34 @@ contract MandateRegistry {
      */
     function settleFinalizedMarket(bytes32 marketId, uint256 maxItems)
         external
-        returns (uint256 processed, bool drained)
+        returns (uint256 processed, uint256 failed, bool drained)
     {
+        // THE MARKET MUST ACTUALLY BE OVER.
+        //
+        // Without this check the function is an exposure-reset button. It is
+        // permissionless and it releases reserved exposure, so a delegate could
+        // call it on a LIVE market, free its own counter while its orders were
+        // still resting, and place again — defeating maxCumulativeExposure
+        // entirely. Releasing exposure is only sound because finalization proves
+        // the reservation can never be spent; verify that, do not assume it.
+        address mkt = marketAddressOf[marketId];
+        if (mkt == address(0)) revert UnknownMarket();
+        if (!IBinaryMarket(mkt).isResolved() && !IBinaryMarket(mkt).isVoided()) revert MarketNotResolved();
+
         bytes32[] storage keys = marketReservations[marketId];
         uint256 i = settleCursor[marketId];
         uint256 end = i + maxItems;
         if (end > keys.length) end = keys.length;
 
         for (; i < end; ++i) {
+            // Isolated so a bad mandate cannot stop its neighbours — but COUNTED
+            // and EMITTED, because `processed == 0` must never be ambiguous
+            // between "nothing to do" and "every single one failed".
             try this.settleOne(keys[i], marketId) { processed++; }
-            catch { /* isolated: a bad mandate must not stop its neighbours */ }
+            catch (bytes memory reason) {
+                failed++;
+                emit SettleFailed(marketId, keys[i], reason);
+            }
         }
         settleCursor[marketId] = i;
         drained = i >= keys.length;
