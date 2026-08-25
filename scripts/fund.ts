@@ -26,9 +26,19 @@ const pk = (n: string) => {
   return privateKeyToAccount((v.startsWith("0x") ? v : `0x${v}`) as `0x${string}`);
 };
 
+/**
+ * Targets sized from MEASURED burn, not guessed.
+ *
+ * placeForDelegator is a heavy path — just-in-time pull, pool approve, place,
+ * residual sweep — and costs roughly 0.028 STT per order. A 12-mandate rehearsal
+ * is therefore ~0.34 STT of delegate gas, and twenty of them ~6.7 STT. The
+ * delegate ran dry at 0.031 STT mid-run once already, which surfaces as an
+ * opaque "Missing or invalid parameters" RPC error rather than anything that
+ * says "out of gas".
+ */
 const TARGETS: [string, string][] = [
-  ["DELEGATE_KEY", "0.5"],
-  ["STRANGER_KEY", "0.5"],
+  ["DELEGATE_KEY", process.env.DELEGATE_TARGET ?? "3"],
+  ["STRANGER_KEY", process.env.STRANGER_TARGET ?? "0.5"],
 ];
 
 async function main() {
