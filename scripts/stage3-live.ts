@@ -13,7 +13,7 @@
 import "dotenv/config";
 import {
   createPublicClient, createWalletClient, http, formatEther, formatUnits,
-  parseAbi, decodeEventLog, type Address, type Hex,
+  parseAbi, decodeEventLog, keccak256, toHex, type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { EC, NETWORK, OrderKind, TOPICS } from "../packages/leash-ec/src/constants.js";
@@ -180,6 +180,10 @@ async function main() {
 
   let ourSettle: { processed: bigint; drained: boolean; gasUsed: bigint; tx: Hex | null } | null = null;
   let skipped = 0;
+  let decodeFailures = 0;
+  const deadhandTopic0 = keccak256(toHex(
+    "Deadhand(bytes32,address,uint256,uint256,bool,uint256)",
+  ));
   for (const l of logs) {
     try {
       const d = decodeEventLog({ abi: hndAbi, data: l.data, topics: l.topics as never });
@@ -193,7 +197,15 @@ async function main() {
       }
       if (d.eventName === "DeadhandSkipped") skipped++;
       if (d.eventName === "DeadhandFailed") console.log(`  DeadhandFailed on ${(d.args as never as {marketId:Hex}).marketId.slice(0,14)}...`);
-    } catch { /* other */ }
+    } catch (err) {
+      // Not "some other event" by assumption: a Deadhand event that fails to
+      // decode would otherwise surface as "our market did not settle", which is
+      // a plausible verdict for what is actually a decode bug.
+      if (l.topics[0] === deadhandTopic0) {
+        console.log(`  WARN: a Deadhand log FAILED TO DECODE — ${(err as Error).message.split(String.fromCharCode(10))[0]}`);
+        decodeFailures++;
+      }
+    }
   }
   // Derived, not counted from events: the hot path deliberately emits nothing,
   // so `skipped` from DeadhandSkipped is now always 0 and would be a zero in a
