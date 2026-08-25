@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Leash — delegate</title>
+</head><body>
+<div class="wrap">
+  <h1>Your trading key</h1>
+  <p class="sub" id="who">—</p>
+
+  <div class="panel">
+    <div class="row"><span class="k">Mandate</span><span class="v"><span id="state" class="pill">…</span></span></div>
+    <div class="row"><span class="k">Max per trade</span><span class="v" id="perTrade">—</span></div>
+    <div class="row"><span class="k">Remaining</span><span class="v" id="remaining">—</span></div>
+    <div class="meter" id="meter"><i id="bar" style="width:0%"></i></div>
+    <p class="note"><span id="capline">—</span> · <span id="expiry">—</span></p>
+    <div class="row"><span class="k">Market</span><span class="v" id="market">—</span></div>
+  </div>
+
+  <div class="panel">
+    <div class="pair">
+      <button id="up" class="up" disabled>UP</button>
+      <button id="down" class="down" disabled>DOWN</button>
+    </div>
+    <p class="err" id="err"></p>
+    <p class="note">The limits above are enforced in the contract. This key cannot
+      withdraw, cannot exceed them, and cannot reach the venue except through them.</p>
+  </div>
+
+  <button id="connect" class="ghost">Connect wallet</button>
+  <button id="addnet" class="ghost">Add Somnia Shannon</button>
+
+  <div class="panel log" id="log"><b>Activity</b></div>
+</div>
+<script type="module" src="/src/delegate.ts"></script>
+</body></html>
