@@ -568,6 +568,30 @@ async function main() {
     return `probe A recorded 0x3fb0ba2e (OnlyApprovedContracts) from three senders; selector under test ${sel.slice(0, 10)}`;
   });
 
+  // ---- subscription hygiene, enforced structurally -----------------------
+  //
+  // A crashed run once left a subscription armed and burned ~0.19 STT across
+  // 400 unattended invocations. `probe-c.ts` was still arming one and disarming
+  // it on NO path, success included. A documented constraint that is not
+  // enforced in code is a constraint that gets broken, so this is a check
+  // rather than a note in a file.
+  {
+    const armers: string[] = [];
+    const unguarded: string[] = [];
+    for (const f of ["stage3-live.ts", "measure-skip.ts", "probe-c.ts", "demo-reset.ts", "stage2-live.ts",
+                     "probe-a.ts", "probe-b.ts", "probe-b2.ts", "fund.ts", "doctor.ts"]) {
+      const s = code(`scripts/${f}`);
+      if (!/["']subscribeTo["']|subscribeTo\(/.test(s)) continue;
+      armers.push(f);
+      if (!/installUnwind\(\)/.test(s) || !/stillArmed\(\)/.test(s)) unguarded.push(f);
+    }
+    if (unguarded.length === 0) {
+      record("PASS", "subscriptions-unwind", `${armers.length} scripts arm a subscription (${armers.join(", ")}); all install unwind and assert stillArmed()`);
+    } else {
+      record("FAIL", "subscriptions-unwind", `${unguarded.join(", ")} arm a subscription without installUnwind()+stillArmed()`);
+    }
+  }
+
   // ---- build health ------------------------------------------------------
   console.log("\n  --- build ------------------------------------------------------");
   const sh = (label: string, cmd: string, args: string[], cwd?: string) => {
