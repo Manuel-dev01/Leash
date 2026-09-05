@@ -2,7 +2,7 @@
 
 Send as ONE message. Ordered by how much each answer changes the architecture.
 
-Most of `CLAUDE.md` §9 was answerable from the SDK source and the chain itself
+Most of the build spec §9 was answerable from the SDK source and the chain itself
 (see `packages/leash-ec/src/constants.ts`), so this asks only what genuinely
 cannot be read off either. Keeping it short is the point — a busy DevRel
 answers four specific questions and ignores twelve vague ones.
@@ -46,7 +46,7 @@ unguarded on the binary path.
 
 ## Answers received
 
-_(record here with the date, then mirror into `CLAUDE.md` §9)_
+_(record here with the date, then mirror into the build spec §9)_
 
 | # | Date | Answer |
 |---|---|---|

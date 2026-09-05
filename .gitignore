@@ -34,3 +34,5 @@ contracts/lib/
 # build docs: working notes, not part of the public repo
 CLAUDE.md
 ROADMAP.md
+AGENTS.md
+*.dc.html

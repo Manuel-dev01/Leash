@@ -8,7 +8,7 @@ import {MockUSDC, MockBinaryPool, ReentrantDelegator} from "./Mocks.sol";
 /**
  * Suite 1 of 2: MANDATE ENFORCEMENT.
  *
- * Per CLAUDE.md §7 the only tests we write are enforcement and revocation,
+ * Per the build spec §7 the only tests we write are enforcement and revocation,
  * because those two paths ARE the security claim and everything else is demo
  * surface. So these are adversarial cases, not happy paths — a limit that holds
  * at 100 and fails at 101 is only proven by testing 100 and 101.

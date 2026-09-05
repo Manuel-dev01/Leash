@@ -5,7 +5,7 @@
  * `ec-core`'s assertTxOk only checks `receipt.status === "reverted"`. It does
  * not simulate, and it does not assert a placement log. But placeBinaryOrder
  * returns `(bool success, uint128 id)` and a `false` mines happily with
- * status = 1 — the silent rejection in CLAUDE.md §4.1 r7. So this path:
+ * status = 1 — the silent rejection in the build spec §4.1 r7. So this path:
  *
  *   quantize in integer space
  *   -> eth_call simulate, ABORT if success == false

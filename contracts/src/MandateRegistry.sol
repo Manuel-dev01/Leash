@@ -302,7 +302,7 @@ contract MandateRegistry {
             kind, price, quantity, expireTimestampNs, 0, 0, address(0), 0, 0
         );
         // placeBinaryOrder returns (success, id) and a `false` does NOT revert —
-        // the silent rejection in CLAUDE.md §4.1 r7. Reverting here is the
+        // the silent rejection in the build spec §4.1 r7. Reverting here is the
         // on-chain half of that guard; the client half simulates first.
         if (!ok) revert PlacementRejected();
 

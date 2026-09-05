@@ -47,7 +47,7 @@ export const EC = {
    * COLLATERAL IS 6 DECIMALS ON TESTNET. Confirmed on-chain: decimals() -> 6,
    * symbol() -> "TUSDC", name() -> "Test USDC".
    *
-   * CLAUDE.md 4.2 rule 9 ("USDso is 18 decimals") is a SPOT / MAINNET fact. On
+   * The build spec 4.2 rule 9 ("USDso is 18 decimals") is a SPOT / MAINNET fact. On
    * testnet Event Contracts the collateral is 6-decimal Test USDC. Assuming 18
    * here misprices every mandate limit by 10^12 — the same class of bug the
    * rule warns about, in the opposite direction. Always read decimals().
@@ -68,7 +68,7 @@ export const VENUE_ID_TESTNET =
 /**
  * Event topics, DERIVED from signatures and cross-checked against live logs.
  *
- * CLAUDE.md 4.2 rule 11 says "never hardcode topics, resolve at boot". The Bot
+ * The build spec 4.2 rule 11 says "never hardcode topics, resolve at boot". The Bot
  * Kit's gotchas.md says the opposite: "pin topic0 from the docs". Both are
  * half-right, and the disagreement is itself the lesson. What actually broke
  * people was DERIVING from a signature string that had silently changed.
@@ -169,7 +169,7 @@ export const MARKET_STATUS_TRADING = 1;
  * Somnia reactivity — from @somnia-chain/reactivity-contracts 0.2.1 source,
  * read 2026-08-24. These numbers decide whether Layer 2 is affordable.
  *
- * THE 32 STT IS NOT A DEPOSIT. `CLAUDE.md` §4.3 r16 reads as "subscriptions
+ * THE 32 STT IS NOT A DEPOSIT. The build spec §4.3 r16 reads as "subscriptions
  * cost 32 STT to fund". What the source actually says is
  * `SUBSCRIPTION_OWNER_MINIMUM_BALANCE = 32 ether`, enforced as
  * `InsufficientBalance()` — "calling contract balance is below ...". It is a

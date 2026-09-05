@@ -86,7 +86,7 @@ async function main() {
   const sym = await client.readContract({ address: EC.collateral as Address, abi: erc20, functionName: "symbol" });
   info(`${sym} @ ${EC.collateral} — decimals ${dec}`);
   dec === 6
-    ? ok("6 decimals, as recorded (NOT the 18 that CLAUDE.md §4.2 r9 implies for spot)")
+    ? ok("6 decimals, as recorded (NOT the 18 that the build spec §4.2 r9 implies for spot)")
     : bad(`decimals ${dec} — constants.ts says 6. Re-verify before sizing any mandate.`);
 
   // 5 ------------------------------------------------------- the Layer 2 gate

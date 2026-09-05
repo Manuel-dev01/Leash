@@ -7,7 +7,7 @@ import { SIGNATURES, TOPICS } from "./constants.js";
  *
  * Two pieces of guidance disagree, and the disagreement is the whole point:
  *
- *   CLAUDE.md §4.2 r11 : "never hardcode topics, resolve at boot"
+ *   the build spec §4.2 r11 : "never hardcode topics, resolve at boot"
  *   Bot Kit gotchas #10: "pin topic0 from the docs, don't hand-roll it"
  *
  * Neither alone is safe. What actually broke people was deriving a topic from a
