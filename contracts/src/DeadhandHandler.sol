@@ -194,12 +194,23 @@ contract DeadhandHandler is SomniaEventHandler {
         // the hot path: it runs on every resolution the venue produces and only
         // rarely leads to work.
         //
-        // MEASURED IN ISOLATION at 0.00044017 STT (~64,700 gas at 6.8 gwei) by
-        // arming a handler that holds no mandates, so every invocation is a pure
-        // skip. Figures derived by dividing a MIXED window by an invocation
-        // count disagreed by 4x and were not measurements. At ~1 finalization
-        // per 10s that is ~3.8 STT/day to sit armed, which is why we subscribe
-        // for demo windows and unsubscribe after rather than leaving it running.
+        // MEASURED FROM RECEIPTS: 291,181 gas at 6 gwei = 0.001747086 STT,
+        // identical on every invocation. Read from `eth_getTransactionReceipt`
+        // on real validator invocations (found via DeadhandSaw), not divided
+        // out of a balance delta — and confirmed unchanged when the
+        // subscription gasLimit went from 3M to 8M, so charging is on gas USED
+        // and a generous limit is free.
+        //
+        // That is ~15.1 STT/day to sit armed at one finalization per 10s, which
+        // is why the subscription is armed for demo windows and unsubscribed
+        // after. An earlier figure of 0.00044017 STT does NOT reproduce on this
+        // build and the ~28,000 gas of H1 instrumentation above does not explain
+        // the gap; it is retracted as unexplained rather than re-derived.
+        //
+        // `pendingSettlement` is O(1) — two SLOADs against a length and a
+        // cursor — so this cost does not grow with the number of mandates. That
+        // was checked, because the alternative would have been a scaling bug
+        // sitting on the path taken by every resolution on the venue.
         if (registry.pendingSettlement(marketId) == 0) {
             ++skippedNoPending;
             return;

@@ -42,13 +42,19 @@ const FIT_FILE = ".measurements/deadhand-fit.json";
  * and reverts on a heavy one is worse than a smaller cap that never fails, and
  * an invocation that runs out of gas settles nothing at all.
  */
-// MEASURE with headroom, SHIP against the real limit. The chain charges on gas
-// USED rather than gasLimit, so a generous limit during measurement costs
-// nothing and is the only way to reach a far point on the line: at the measured
-// ~450k gas per mandate, an n=12 batch does not fit under the shipping limit at
-// all, and a reverted invocation measures nothing.
-const SUB_GAS_LIMIT = BigInt(process.env.SUB_GAS_LIMIT ?? 3_000_000);
-const SHIP_GAS_LIMIT = BigInt(process.env.SHIP_GAS_LIMIT ?? 3_000_000);
+// 8M, NOT the 3M this used to arm, and the change is forced by measurement
+// rather than chosen: a 12-mandate settle costs 3,301,786 gas in-body, so under
+// a 3M subscription the demo's own headline batch runs out of gas and settles
+// nothing. The chain charges on gas USED, not on `gasLimit` — confirmed again
+// here, since raising the limit from 3M to 10M LOWERED the per-invocation cost
+// — so the wider limit buys the batch and costs nothing when the callback exits
+// early. 10M was accepted and invoked 100 times, so limits above 3M are live,
+// not assumed.
+//
+// SHIP_GAS_LIMIT is what the cap is sized against; keep the two equal unless
+// deliberately measuring with extra headroom.
+const SUB_GAS_LIMIT = BigInt(process.env.SUB_GAS_LIMIT ?? 8_000_000);
+const SHIP_GAS_LIMIT = BigInt(process.env.SHIP_GAS_LIMIT ?? 8_000_000);
 const WORKING_BUDGET = (SHIP_GAS_LIMIT * 5n) / 6n; // leave the dispatch overhead out
 const HEADROOM = 0.5;
 

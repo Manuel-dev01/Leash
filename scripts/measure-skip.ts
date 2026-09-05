@@ -25,6 +25,7 @@ import { EC, NETWORK, TOPICS } from "../packages/leash-ec/src/constants.js";
 const RPC = process.env.EC_RPC_URL ?? "https://api.infra.testnet.somnia.network";
 const HANDLER = (process.env.DEADHAND_HANDLER ?? "") as Address;
 const WINDOW_S = Number(process.env.WINDOW_S ?? 150);
+const GAS_LIMIT = BigInt(process.env.GAS_LIMIT ?? 8_000_000);
 
 const chain = {
   id: NETWORK.chainId, name: "Somnia Shannon",
@@ -60,10 +61,15 @@ async function main() {
 
   const h = await w.writeContract({
     address: HANDLER, abi: hndAbi, functionName: "subscribeTo",
-    args: [EC.binaryModule as Address, TOPICS.MarketFinalized as Hex, 3_000_000n, 7_000_000_000n] as never,
+    // Defaults to the gasLimit the demo arms with, so the figure describes the
+    // system we ship. Overridable because whether this number MOVES with the
+    // limit is itself the question: "the chain charges on gas used, not on
+    // gasLimit" is load-bearing for the whole one-subscription argument, and it
+    // is settled by running this twice with one variable changed.
+    args: [EC.binaryModule as Address, TOPICS.MarketFinalized as Hex, GAS_LIMIT, 7_000_000_000n] as never,
   });
   await pub.waitForTransactionReceipt({ hash: h });
-  console.log(`  subscribed, listening ${WINDOW_S}s with ZERO mandates...`);
+  console.log(`  subscribed at gasLimit ${GAS_LIMIT}, listening ${WINDOW_S}s with ZERO mandates...`);
 
   await sleep(WINDOW_S * 1000);
 

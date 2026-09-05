@@ -365,6 +365,16 @@ async function main() {
 
   // ---- one subscription, N beneficiaries ---------------------------------
   await check("one-subscription-n-beneficiaries", async () => {
+    // The deployed handler must be the source in this repo. Metadata is
+    // stripped: solc's trailer changes when a COMMENT changes, and comment
+    // drift is not semantic drift — but anything else is, and every gas figure
+    // above is tagged to this deployment.
+    const lh = localRuntime("contracts/out/DeadhandHandler.sol/DeadhandHandler.json");
+    must(
+      stripMetadata(maskImmutables(lh.code, lh.refs).toString("hex")) ===
+      stripMetadata(maskImmutables(handlerCode, lh.refs).toString("hex")),
+      "deployed handler executable bytecode does not match the local compile — the measurements describe another program",
+    );
     const reg = await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "registry" }) as Address;
     must(reg.toLowerCase() === REGISTRY.toLowerCase(), `handler points at ${reg}, not the registry under test`);
     const src = readFileSync("contracts/src/DeadhandHandler.sol", "utf8");

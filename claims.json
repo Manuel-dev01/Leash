@@ -22,7 +22,6 @@
     "rather than green — a measurement that outlives its build is how 789 gas",
     "and a batch cap of 24 both nearly reached a README."
   ],
-
   "generated": "2026-09-05",
   "network": {
     "name": "Somnia Shannon testnet",
@@ -37,7 +36,6 @@
     "binaryModule": "0x3ecC694Cef705358864a646142ac17A90E29e388",
     "$comment": "The handler was redeployed on 5 Sep to add the H1 instrumentation. The previous one (0xDED8c0bE939cCe19f27176E5F33deA7b2A4DE35C) is drained and dead; nothing should reference it."
   },
-
   "statuses": {
     "LIVE-ASSERTED": "verify.ts asserts it against deployed contracts on the real network",
     "LIVE-PROVEN": "a real transaction on the explorer is the evidence",
@@ -45,12 +43,16 @@
     "MEASURED": "a number read from receipts or balance deltas on the deployed build",
     "UNBACKED": "stated nowhere yet, because nothing currently proves it"
   },
-
   "claims": [
     {
       "id": "registry-holds-no-funds",
       "claim": "The registry holds no funds. Every unit of collateral in it is owed to a named party.",
-      "appearsIn": ["landing:stat-grid", "app:monitor", "README", "demo:beat2"],
+      "appearsIn": [
+        "landing:stat-grid",
+        "app:monitor",
+        "README",
+        "demo:beat2"
+      ],
       "status": "LIVE-ASSERTED",
       "proof": {
         "assertion": "MandateRegistry.holdsNoFunds() == true AND unattributed() == 0",
@@ -58,12 +60,18 @@
         "source": "contracts/src/MandateRegistry.sol:597"
       },
       "history": "This was green in the unit suite while the deployed registry held 0.24 tUSDC. The mock refunded escrow synchronously; the venue does not. Fixed with a per-mandate refundClaim and a permissionless sweepRefunds, and the assertion moved on-chain.",
-      "provenance": { "commit": "21dd566", "checkedAt": "runtime" }
+      "provenance": {
+        "commit": "21dd566",
+        "checkedAt": "runtime"
+      }
     },
     {
       "id": "no-unattributed-escrow",
       "claim": "Refunded escrow is attributed to the mandate that reserved it, never pooled.",
-      "appearsIn": ["README", "app:monitor"],
+      "appearsIn": [
+        "README",
+        "app:monitor"
+      ],
       "status": "LIVE-ASSERTED",
       "proof": {
         "assertion": "unattributed() == 0, and balanceOf(registry) <= totalOwed + totalRefundClaim",
@@ -71,12 +79,19 @@
         "source": "contracts/src/MandateRegistry.sol:602"
       },
       "history": "A pooled sweep once paid a 3-mandate settlement out of 12 unrelated mandates' escrow.",
-      "provenance": { "commit": "21dd566", "checkedAt": "runtime" }
+      "provenance": {
+        "commit": "21dd566",
+        "checkedAt": "runtime"
+      }
     },
     {
       "id": "immutable-no-admin",
       "claim": "Non-upgradeable. No proxy, no admin key, no owner role, no pause.",
-      "appearsIn": ["landing:stat-grid", "README", "app:review"],
+      "appearsIn": [
+        "landing:stat-grid",
+        "README",
+        "app:review"
+      ],
       "status": "LIVE-ASSERTED",
       "proof": {
         "assertion": "Deployed registry runtime bytecode contains no DELEGATECALL, matches the local compile byte-for-byte outside the metadata trailer, and EIP-1967 implementation/admin/beacon slots are all zero. The ABI exposes no owner/admin/pause/upgrade function.",
@@ -84,12 +99,19 @@
         "source": "scripts/verify.ts"
       },
       "history": "Was SUITE-ONLY: the source says immutable and the tests never checked the deployed artifact. A judge checks the deployment, not the source.",
-      "provenance": { "commit": "473cb33", "checkedAt": "runtime" }
+      "provenance": {
+        "commit": "473cb33",
+        "checkedAt": "runtime"
+      }
     },
     {
       "id": "beat3-unforgeable",
       "claim": "A validator invocation cannot be forged, by a competitor or by us.",
-      "appearsIn": ["README", "demo:beat3", "deck"],
+      "appearsIn": [
+        "README",
+        "demo:beat3",
+        "deck"
+      ],
       "status": "LIVE-ASSERTED",
       "proof": {
         "assertion": "Calling onEvent on the DEPLOYED handler from an ordinary EOA reverts. Only 0x0100 passes the check in SomniaEventHandler.onEvent.",
@@ -97,12 +119,20 @@
         "source": "node_modules/@somnia-chain/reactivity-contracts/contracts/SomniaEventHandler.sol"
       },
       "history": "Was SOURCE-READABLE only — true of the library, unproven of our deployment.",
-      "provenance": { "commit": "473cb33", "checkedAt": "runtime" }
+      "provenance": {
+        "commit": "473cb33",
+        "checkedAt": "runtime"
+      }
     },
     {
       "id": "delegate-cannot-bypass",
       "claim": "The delegate cannot exceed the per-order cap, the cumulative budget, the market list, or the expiry, and cannot revoke or redirect funds.",
-      "appearsIn": ["landing:ticker", "app:connect", "README", "demo:beat1"],
+      "appearsIn": [
+        "landing:ticker",
+        "app:connect",
+        "README",
+        "demo:beat1"
+      ],
       "status": "LIVE-ASSERTED",
       "proof": {
         "assertion": "41 unit tests (28 enforcement + 13 revocation) AND, on the deployed registry, each of the six named errors is provoked from a real key and the raw eth_call revert data decodes to that exact selector.",
@@ -110,30 +140,48 @@
         "source": "contracts/test/MandateEnforcement.t.sol, contracts/test/MandateRevocation.t.sol, scripts/verify.ts"
       },
       "history": "A reentrancy test asserted a guard it never triggered, because the mock token had no callback. The rule that came out of it: an assertion is only as strong as the fidelity of what it runs against.",
-      "provenance": { "commit": "473cb33", "checkedAt": "runtime" }
+      "provenance": {
+        "commit": "473cb33",
+        "checkedAt": "runtime"
+      }
     },
     {
       "id": "layer2-deletable",
       "claim": "Deleting the Deadhand handler and its subscription leaves a fully working app. The handler is one caller among several, never the source of truth.",
-      "appearsIn": ["README", "deck"],
+      "appearsIn": [
+        "README",
+        "deck"
+      ],
       "status": "LIVE-PROVEN",
       "proof": {
         "assertion": "A stranger key — not the delegator, not the delegate, not the handler — calls settleFinalizedMarket directly and it succeeds.",
         "runsAgainst": "the deployed registry, with the handler unsubscribed and not in the call path",
-        "evidence": ["0x4f923e20bdff5271cba06996df12f80de1c76e6aea43ecd3db0d3815216c1970"]
+        "evidence": [
+          "0x4f923e20bdff5271cba06996df12f80de1c76e6aea43ecd3db0d3815216c1970"
+        ]
       },
       "history": "An earlier delete-test passed vacuously: it used a simulated orderId, so settle was a silent no-op that still returned status=success.",
-      "provenance": { "commit": "473cb33", "block": "5 Sep 2026" }
+      "provenance": {
+        "commit": "473cb33",
+        "block": "5 Sep 2026"
+      }
     },
     {
       "id": "validators-settle-a-batch-in-block",
-      "claim": "When a market resolves, validators invoke the handler and it settles every affected mandate in that block — revoking breachers and sweeping payouts to the delegator, who never traded.",
-      "appearsIn": ["README", "demo:beat3", "deck"],
+      "claim": "When a market resolves, validators invoke the handler and it settles every affected mandate in that block - revoking breachers and sweeping payouts to the delegator, who never traded. Measured at 3 and at 12 mandates, drained=true both times.",
+      "appearsIn": [
+        "README",
+        "demo:beat3",
+        "deck"
+      ],
       "status": "LIVE-PROVEN",
       "proof": {
         "assertion": "A Deadhand event from a real validator invocation, with processed == the number of mandates seeded and drained == true.",
         "runsAgainst": "the CURRENT deployed handler bytecode, invoked by validators on a real MarketFinalized",
-        "evidence": ["0xd9162752036bb1c08fd85556066b599ec5960df58efafd46582030d8889b57e9"]
+        "evidence": [
+          "0xd9162752036bb1c08fd85556066b599ec5960df58efafd46582030d8889b57e9",
+          "0x5a4d63b79075ebf0d6ad5f7bdb106013ae483d75f112259518fb774d6726f672"
+        ]
       },
       "history": "The previous evidence was on a superseded handler deployment whose marketsSettled counter reads 0 — i.e. it never settled anything at this address. Re-proven on the current build.",
       "provenance": {
@@ -143,53 +191,76 @@
     },
     {
       "id": "batch-cap",
-      "claim": "The handler settles a bounded batch, sized from measurement.",
-      "appearsIn": ["README", "deck", "answer to: how does this scale"],
-      "status": "UNBACKED",
+      "claim": "The handler settles a bounded batch of 13 mandates, sized from a two-point fit on the deployed bytecode.",
+      "appearsIn": [
+        "README",
+        "deck",
+        "answer to: how does this scale"
+      ],
+      "status": "LIVE-ASSERTED",
       "proof": {
         "assertion": "batchCap on the deployed handler equals the value implied by a two-point fit over .measurements/deadhand-fit.json, at 50% headroom below where the shipped subscription gasLimit binds.",
         "runsAgainst": "gasUsed read from Deadhand events emitted by real validator invocations on the current bytecode",
         "source": ".measurements/deadhand-fit.json"
       },
-      "history": "Shipped as 24 from a fit taken on a DIFFERENT handler deployment. The first measurement on the current build reports 1,350,525 gas for 3 mandates (~450,000 each), against the old fit's implied ~319,000 for the same batch — so 24 was not merely unbacked, it was unrunnable: it needs ~10.8M gas against a 3M subscription limit. Do not quote a cap until the fit closes.",
+      "history": "Shipped as 24 from a fit taken on handler 0xDED8c0bE..., whose marketsSettled counter reads 0 - it never settled anything at that address. On the current build the fit is fixed ~700,105 gas + marginal ~216,807 gas/mandate, from n=3 (1,350,525) and n=12 (3,301,786). A cap of 24 would need ~5.9M gas; against the 3M subscription this used to arm, even n=12 does not fit. The subscription now arms at 8,000,000 gasLimit, which costs nothing extra because charging is on gas used - see skip-cost.",
       "provenance": {
         "codeHash": "0xc58d368b4cad839bae8b2b80466dc0e8c5d07781003f273ee7d88a11d77dfee6",
-        "points": "pending the second measurement"
-      }
+        "points": ".measurements/deadhand-fit.json",
+        "evidence": [
+          "0xd9162752036bb1c08fd85556066b599ec5960df58efafd46582030d8889b57e9",
+          "0x5a4d63b79075ebf0d6ad5f7bdb106013ae483d75f112259518fb774d6726f672"
+        ]
+      },
+      "caveat": "Two points, and one of them is the handler's FIRST-EVER settle, which pays zero->nonzero writes on its counters. That inflates the intercept and deflates the slope slightly. A third point at a different n on a warm handler would tighten it; the cap is deliberately at 50% headroom partly for this reason."
     },
     {
       "id": "skip-cost",
-      "claim": "Ignoring a finalization that is not ours costs 0.00044017 STT.",
-      "appearsIn": ["README", "deck"],
+      "claim": "Ignoring a finalization that is not ours costs 291,181 gas (0.001747086 STT at 6 gwei), deterministic on every invocation.",
+      "appearsIn": [
+        "README",
+        "deck"
+      ],
       "status": "MEASURED",
       "proof": {
-        "assertion": "STT balance delta across a window in which every invocation was a pure skip.",
-        "runsAgainst": "a handler holding ZERO mandates, so no settle can contaminate the window; the script discards the window if one occurs",
+        "assertion": "gasUsed and effectiveGasPrice read from eth_getTransactionReceipt on real validator invocations, located via the DeadhandSaw log. Identical on every sample.",
+        "runsAgainst": "receipts of live validator invocations against the deployed handler — not a balance delta divided by a count",
         "source": "scripts/measure-skip.ts"
       },
-      "caveat": "Quotable ONLY with the armed cost attached: ~3.8 STT/day at one finalization per 10s. 'We subscribe to everything and it is nearly free' is no longer true and must not be repeated. The gas equivalent (~64,700) assumes 6.8 gwei; the STT figure does not.",
-      "history": "A probe handler suggested 789 gas. The real path costs ~80x that. Two further figures derived by dividing a MIXED window by an invocation count disagreed by 4x and were not measurements at all.",
+      "caveat": "Quotable ONLY with the armed cost attached: ~15.1 STT/day at one finalization per 10s. 'We subscribe to everything and pay a rounding error' is FALSE and must not be said. The argument that survives is the shape, not the price: one subscription regardless of how many delegations exist, against a per-user-per-order model that scales with users x orders.",
+      "history": "RETRACTED: 0.00044017 STT / ~64,700 gas. That figure does not reproduce on this build, and the ~28,000 gas of H1 instrumentation added since does not explain a 4.5x gap. Retracted as unexplained rather than re-derived — inventing an explanation is how the previous three wrong numbers survived. Also retracted: 789 gas (probe handler), and 78,100 / ~339,000 (both divided out of MIXED windows and disagreeing by 4x).",
       "provenance": {
-        "codeHash": "PRE-INSTRUMENTATION",
-        "note": "Measured before the seen[] mapping was added. The skip path now also pays one cold SSTORE (~22,100 gas), so this figure is a LOWER BOUND on the current build until re-measured."
-      }
+        "codeHash": "0xc58d368b4cad839bae8b2b80466dc0e8c5d07781003f273ee7d88a11d77dfee6",
+        "evidence": "receipts at blocks 480662211-480663411"
+      },
+      "alsoEstablished": "Charging is on gas USED, not gasLimit: the identical figure came back to the wei at gasLimit 3,000,000 and 8,000,000 — same call, one variable changed. And pendingSettlement is O(1), so the skip cost does not grow with the mandate count."
     },
     {
       "id": "one-subscription-n-beneficiaries",
       "claim": "One subscription serves every delegation. dreamDEX's SpotStopOrderRegistry funds one per user per order.",
-      "appearsIn": ["README", "deck", "the sponsor argument"],
+      "appearsIn": [
+        "README",
+        "deck",
+        "the sponsor argument"
+      ],
       "status": "LIVE-ASSERTED",
       "proof": {
         "assertion": "The handler has exactly one subscriptionId, and the settle it performs covers every mandate on the resolved market regardless of how many delegators are involved. subscribeTo is not payable and takes no per-user argument.",
         "runsAgainst": "the deployed handler's ABI and its subscriptionId storage slot",
         "source": "contracts/src/DeadhandHandler.sol"
       },
-      "provenance": { "codeHash": "0xc58d368b4cad839bae8b2b80466dc0e8c5d07781003f273ee7d88a11d77dfee6", "checkedAt": "runtime" }
+      "provenance": {
+        "codeHash": "0xc58d368b4cad839bae8b2b80466dc0e8c5d07781003f273ee7d88a11d77dfee6",
+        "checkedAt": "runtime"
+      }
     },
     {
       "id": "no-third-party-on-critical-path",
       "claim": "No indexer, no REST API, no third-party service sits on the path between opening the app and placing an order.",
-      "appearsIn": ["README", "deck"],
+      "appearsIn": [
+        "README",
+        "deck"
+      ],
       "status": "LIVE-ASSERTED",
       "proof": {
         "assertion": "NEGATIVE TEST. No shipped module references an indexer or REST host; market discovery reads MarketCreated logs straight from the binaryModule singleton and still returns markets. Pointed at a dead RPC, discovery THROWS rather than returning an empty list.",
@@ -197,12 +268,20 @@
         "source": "packages/leash-ec/src/discover.ts"
       },
       "history": "The indexer went down mid-build and every SDK discovery path went through it. Chain-only discovery was written that day.",
-      "provenance": { "commit": "40d8415", "checkedAt": "runtime" }
+      "provenance": {
+        "commit": "40d8415",
+        "checkedAt": "runtime"
+      }
     },
     {
       "id": "onscreen-figures-are-chain-derived",
       "claim": "Every mandate limit and the held-by-registry figure are read from the contract. Nothing that looks like a mandate limit is decorative.",
-      "appearsIn": ["landing:stat-grid", "app:monitor", "app:place_order", "README"],
+      "appearsIn": [
+        "landing:stat-grid",
+        "app:monitor",
+        "app:place_order",
+        "README"
+      ],
       "status": "LIVE-ASSERTED",
       "proof": {
         "assertion": "NEGATIVE TEST. readHeld() against an unroutable RPC returns the em dash and read=false, never '0.00'. The monitor and delegate envelopes render their own age from chainAt and say so when a poll has failed. The price chart is labelled indicative.",
@@ -210,25 +289,41 @@
         "source": "apps/web/src/held.ts, apps/web/src/state.ts"
       },
       "history": "The chart ships under an explicit override of the read-only-mirror rule. The hard line attached to that override is this claim, which is why it gets a negative test rather than an inspection.",
-      "provenance": { "commit": "473cb33", "checkedAt": "runtime" }
+      "provenance": {
+        "commit": "473cb33",
+        "checkedAt": "runtime"
+      }
     },
     {
       "id": "real-event-contract-order",
       "claim": "The delegate places a real Event Contract order that fills, drawing on an allowance the delegator can revoke at any moment. The principal never leaves the delegator's wallet.",
-      "appearsIn": ["README", "demo:beat2", "deck"],
+      "appearsIn": [
+        "README",
+        "demo:beat2",
+        "deck"
+      ],
       "status": "LIVE-PROVEN",
       "proof": {
         "assertion": "A BinaryOrderPlaced log in the receipt of a placeForDelegator transaction sent by the delegate key, with the delegator having signed only an ERC-20 approve.",
         "runsAgainst": "a live dreamDEX binary pool on Somnia Shannon",
-        "evidence": ["0xbe4b6bdb"]
+        "evidence": [
+          "0xbe4b6bdb"
+        ]
       },
       "caveat": "The order path is guarded by simulate -> abort on success==false -> assert BinaryOrderPlaced -> read the id FROM THE RECEIPT. ec-core does not do this, and a mined transaction can be a silent rejection.",
-      "provenance": { "commit": "3bdae03", "block": "24 Aug 2026" }
+      "provenance": {
+        "commit": "3bdae03",
+        "block": "24 Aug 2026"
+      }
     },
     {
       "id": "delegate-cannot-take",
       "claim": "The delegate's attempt to move funds reverts on our own authorization check, not on an incidental 'nothing to withdraw'.",
-      "appearsIn": ["landing:ticker", "README", "demo:beat1"],
+      "appearsIn": [
+        "landing:ticker",
+        "README",
+        "demo:beat1"
+      ],
       "status": "LIVE-ASSERTED",
       "proof": {
         "assertion": "The registry exposes no withdraw function at all — there is no selector to call. revoke() from the delegate key reverts with NotDelegator, read as raw eth_call return data and decoded to that selector.",
@@ -236,29 +331,38 @@
         "source": "contracts/src/MandateRegistry.sol:242"
       },
       "history": "An error decoder once matched the SENDER ADDRESS with a regex and reported it as a revert selector. Selectors are decoded from raw return data, never pattern-matched out of a message string.",
-      "provenance": { "commit": "473cb33", "checkedAt": "runtime" }
+      "provenance": {
+        "commit": "473cb33",
+        "checkedAt": "runtime"
+      }
     },
     {
       "id": "no-eoa-authorization-surface",
       "claim": "Event Contracts expose no per-user authorization surface. placeBinaryOrderFor is gated by OnlyApprovedContracts() and rejects even the owner acting for itself, so no EOA can ever be granted pool-level authority.",
-      "appearsIn": ["README", "deck", "the sponsor argument"],
+      "appearsIn": [
+        "README",
+        "deck",
+        "the sponsor argument"
+      ],
       "status": "LIVE-PROVEN",
       "proof": {
         "assertion": "PROBE A. Identical call, one variable changed, raw eth_call return data, three senders. All three revert with 0x3fb0ba2e including the owner for itself, while the same order via placeBinaryOrder(self) passes authorization and fails on allowance.",
         "runsAgainst": "the live binary pool implementation resolved through its beacon — not ec-core's bundled address, which is stale",
         "source": "scripts/probe-a.ts"
       },
-      "provenance": { "commit": "3bdae03", "block": "24 Aug 2026" }
+      "provenance": {
+        "commit": "3bdae03",
+        "block": "24 Aug 2026"
+      }
     }
   ],
-
   "openHypotheses": [
     {
       "id": "H1",
       "question": "A previous handler deployment recorded 474 invocations and zero settles. Was our market's MarketFinalized never delivered (H1a), or delivered and skipped by the pendingSettlement == 0 path (H1b)?",
       "status": "DISTINGUISHABLE — and not reproduced on the current build",
       "distinguishingTest": "seen[marketId] on the deployed handler. Zero after a finalization we watched for is H1a; non-zero with no settle is H1b.",
-      "firstResult": "n=3 run, 5 Sep: seen[0x…146ba] == 1 and the market settled. Neither branch fired. That does not retire H1 — it means the instrumentation now answers the question the next time it happens, which is the point.",
+      "firstResult": "Two runs, 5 Sep: seen[marketId] == 1 both times and both settled. Neither branch fired. That does not retire H1 - it means the instrumentation now answers the question the next time it happens, which is the point.",
       "note": "The two were indistinguishable precisely because the emit that separated them had been trimmed for gas."
     }
   ]
