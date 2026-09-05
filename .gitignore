@@ -38,3 +38,5 @@ AGENTS.md
 *.dc.html
 apps/web/dist/
 .vercel
+
+.vercel
