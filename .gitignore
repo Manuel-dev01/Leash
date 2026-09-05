@@ -36,3 +36,5 @@ CLAUDE.md
 ROADMAP.md
 AGENTS.md
 *.dc.html
+apps/web/dist/
+.vercel

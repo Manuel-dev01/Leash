@@ -16,6 +16,18 @@ export const RPC = "https://api.infra.testnet.somnia.network";
 export const EXPLORER = "https://shannon-explorer.somnia.network";
 export const COLLATERAL = "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E" as Address;
 
+/**
+ * The deployed registry. Overridable at build time so a redeploy does not need a
+ * code change, and at runtime via ?r= so a QR can point at a specific instance.
+ */
+const ENV = (import.meta as unknown as { env?: Record<string, string> }).env ?? {};
+export const REGISTRY: string =
+  new URLSearchParams(globalThis.location?.search ?? "").get("r") ??
+  ENV.VITE_REGISTRY ??
+  "0x7ca9dA7Be8C8F8Ca5E1c9821061cD4fc23418864";
+export const HANDLER: string =
+  ENV.VITE_HANDLER ?? "0xDED8c0bE939cCe19f27176E5F33deA7b2A4DE35C";
+
 export const chain = {
   id: CHAIN_ID,
   name: "Somnia Shannon",

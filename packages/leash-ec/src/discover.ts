@@ -74,7 +74,10 @@ if (_derived !== MARKET_CREATED_TOPIC0) {
 }
 
 export function ecClient(rpcUrl?: string): PublicClient {
-  const url = rpcUrl ?? process.env.EC_RPC_URL ?? "https://api.infra.testnet.somnia.network";
+  // This module is shared by the Node scripts AND the browser bundle, so it must
+  // not assume `process` exists. A bare `process.env` here crashes the app.
+  const g = globalThis as { process?: { env?: Record<string, string | undefined> } };
+  const url = rpcUrl ?? g.process?.env?.EC_RPC_URL ?? "https://api.infra.testnet.somnia.network";
   return createPublicClient({ transport: http(url) }) as PublicClient;
 }
 

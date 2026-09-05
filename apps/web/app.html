@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>leash</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div class="shell">
+
+  <div class="rail">
+    <div style="display:flex;flex-direction:column;gap:6px">
+      <a href="/" style="font-size:13px;font-weight:700;letter-spacing:-0.02em">leash</a>
+      <span style="font-size:11px;letter-spacing:0.1em;color:var(--dimmer)" id="netline">chain 50312</span>
+    </div>
+
+    <div class="tabs">
+      <button id="tab-delegator">delegator</button>
+      <button id="tab-delegate">delegate</button>
+    </div>
+
+    <div id="nav"></div>
+
+    <p style="margin:0;font-size:12px;line-height:1.85;color:var(--dimmer);text-wrap:pretty">two roles, one contract. the delegator's screens write the limits. the delegate's screens can only spend inside them.</p>
+  </div>
+
+  <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+    <div class="frame">
+      <header>
+        <span style="font-size:12px;font-weight:700;letter-spacing:-0.02em">leash</span>
+        <button id="chip" class="chip">add somnia 50312</button>
+      </header>
+      <div class="scroll" id="screen"></div>
+    </div>
+    <p style="margin:0;max-width:380px;font-size:11px;line-height:1.7;color:var(--dimmer)" id="why"></p>
+  </div>
+
+</div>
+<script type="module" src="/src/app.ts"></script>
+</body>
+</html>

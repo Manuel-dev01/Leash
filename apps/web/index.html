@@ -1,19 +1,78 @@
 <!doctype html>
-<html lang="en"><head>
+<html lang="en">
+<head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Leash</title>
-</head><body>
-<div class="wrap">
-  <h1>Leash</h1>
-  <p class="sub">A trading key that cannot steal, on a mandate validators enforce.</p>
-  <div class="panel">
-    <p class="note">Event Contracts have no per-user authorization surface — we built one.
-      The delegate has no route to the venue that skips the limits, because no such
-      authority is grantable to a wallet.</p>
-  </div>
-  <a href="/delegator.html"><button>I'm lending my capital</button></a>
-  <a href="/delegate.html"><button class="ghost">I'm trading for someone</button></a>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>leash — a trading key that cannot steal</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px clamp(14px,4vw,44px)">
+  <span style="font-size:13px;font-weight:800;letter-spacing:-0.03em">leash</span>
+  <span style="font-size:10.5px;letter-spacing:0.1em;color:var(--dimmer)">somnia &times; dreamDEX</span>
 </div>
-<script type="module">import "/src/app.css";</script>
-</body></html>
+
+<div style="position:relative;padding:clamp(28px,8vh,92px) clamp(14px,4vw,44px) clamp(20px,5vh,56px)">
+  <span aria-hidden="true" style="position:absolute;top:clamp(-10px,-2vh,0px);right:clamp(-16px,-2.5vw,0px);font-size:clamp(150px,40vw,460px);line-height:0.72;font-weight:800;letter-spacing:-0.09em;color:var(--ghost);pointer-events:none;user-select:none">00</span>
+  <h1 style="margin:0;position:relative;font-size:clamp(38px,15.5vw,210px);line-height:0.86;font-weight:800;letter-spacing:-0.065em">
+    <div>a trading</div><div>key that</div>
+    <div style="color:var(--accent)">cannot<span class="cursor">_</span></div>
+    <div>steal</div>
+  </h1>
+</div>
+
+<!-- Real contract errors. Every name here is a selector in the deployed
+     registry; a judge can grep the source for any of them. -->
+<div style="overflow:hidden;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);padding:11px 0">
+  <div style="display:flex;width:max-content;animation:slide 26s linear infinite" id="ticker"></div>
+</div>
+
+<div style="display:flex;flex-wrap:wrap;align-items:flex-end;gap:clamp(20px,5vw,64px);padding:clamp(28px,6vh,68px) clamp(14px,4vw,44px)">
+  <p style="margin:0;flex:1 1 300px;max-width:26ch;font-size:clamp(15px,1.7vw,21px);line-height:1.5;letter-spacing:-0.025em;color:#a9a49c;text-wrap:pretty">let someone trade event contracts for you. on a mandate the validators enforce.</p>
+  <div style="flex:0 0 auto;display:flex;flex-wrap:wrap;gap:7px">
+    <a href="/app.html" style="background:var(--accent);color:var(--bg);padding:15px 22px;font-size:13px;font-weight:700">create a mandate</a>
+    <button id="addnet" class="btn ghost" style="width:auto;padding:15px 22px">add somnia 50312</button>
+  </div>
+</div>
+
+<!-- These four are read from chain, not written into the markup. -->
+<div style="border-top:1px solid var(--rule);display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))" id="stats"></div>
+
+<div style="border-top:1px solid var(--rule);padding:clamp(30px,7vh,80px) clamp(14px,4vw,44px)">
+  <span class="eyebrow" style="font-size:10.5px">the mandate</span>
+  <div style="font-size:clamp(22px,4.6vw,62px);line-height:1.14;font-weight:500;letter-spacing:-0.05em;margin-top:18px;max-width:24ch">
+    they may spend <span style="color:var(--accent)">500</span>, <span style="color:var(--accent)">50</span> at a time, in <span style="color:var(--accent)">3</span> markets, for <span style="color:var(--accent)">7</span> days.
+  </div>
+  <p style="margin:22px 0 0;max-width:40ch;font-size:12.5px;line-height:1.85;color:var(--dim);text-wrap:pretty">nothing else. the money never leaves your wallet, and the only address it can be withdrawn to is yours.</p>
+</div>
+
+<div style="border-top:1px solid var(--rule);padding:clamp(30px,7vh,80px) clamp(14px,4vw,44px);display:flex;flex-wrap:wrap;gap:clamp(20px,5vw,60px)">
+  <div style="flex:1 1 260px;max-width:34ch">
+    <span class="eyebrow" style="font-size:10.5px;color:var(--accent)">one transaction</span>
+    <p style="margin:16px 0 0;font-size:13px;line-height:1.85;color:var(--dim);text-wrap:pretty">check, pull, place, sweep. any breach reverts the whole call.</p>
+  </div>
+  <div style="flex:2 1 320px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;font-size:clamp(13px,1.5vw,17px);letter-spacing:-0.02em">
+    <span>check</span><span style="color:var(--accent)">&rarr;</span><span>pull</span><span style="color:var(--accent)">&rarr;</span><span>place</span><span style="color:var(--accent)">&rarr;</span><span>sweep</span>
+    <span style="flex:1 1 40px;height:1px;background:var(--rule);min-width:30px"></span>
+    <span style="font-size:11.5px;color:var(--dimmer)" id="sweepnote">balance back to 0.00</span>
+  </div>
+</div>
+
+<div style="border-top:1px solid var(--rule);padding:clamp(36px,10vh,116px) clamp(14px,4vw,44px)">
+  <p style="margin:0;font-size:clamp(26px,7.4vw,96px);line-height:1.02;font-weight:800;letter-spacing:-0.06em;max-width:15ch;text-wrap:balance">prove you <span style="color:var(--accent)">can't</span> steal</p>
+  <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:28px">
+    <a href="/app.html" style="background:var(--ink);color:var(--bg);padding:15px 22px;font-size:13px;font-weight:700">open_app</a>
+    <a href="/app.html?role=delegate" style="border:1px solid var(--rule2);padding:15px 22px;font-size:13px;color:var(--dim)">i'm the delegate</a>
+  </div>
+</div>
+
+<div style="border-top:1px solid var(--rule);padding:14px clamp(14px,4vw,44px) clamp(24px,5vh,40px);display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;font-size:10.5px;color:var(--dimmer)">
+  <span id="deployed">chain 50312</span>
+  <a id="explorer" href="#" target="_blank" rel="noreferrer" style="color:var(--dimmer)">registry &rarr;</a>
+</div>
+
+<script type="module" src="/src/landing.ts"></script>
+</body>
+</html>

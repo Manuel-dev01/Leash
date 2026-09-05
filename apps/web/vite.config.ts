@@ -7,8 +7,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         index: resolve(__dirname, "index.html"),
-        delegator: resolve(__dirname, "delegator.html"),
-        delegate: resolve(__dirname, "delegate.html"),
+        app: resolve(__dirname, "app.html"),
       },
     },
   },

@@ -1,0 +1,176 @@
+/* Leash design system — extracted from the canvas designs.
+   Hard-edged, monospace, near-black. No border radius anywhere: the surface is
+   an instrument, not a card UI. */
+
+:root {
+  --bg:     #0f0f0f;
+  --ink:    #d6d3cc;
+  --dim:    #8b8781;
+  --dimmer: #6e6b66;
+  --rule:   #2b2a27;
+  --rule2:  #3a3835;
+  --ghost:  #171716;
+  --accent: #ff4d2e;
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+a { color: var(--ink); text-decoration: none; }
+a:hover { color: var(--accent); }
+::selection { background: var(--accent); color: var(--bg); }
+input[type=range] { accent-color: var(--accent); height: 20px; }
+
+@keyframes slide { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes blink { 0%, 60% { opacity: 1; } 61%, 100% { opacity: 0.15; } }
+
+.cursor { animation: blink 1.4s steps(1) infinite; }
+
+/* ---- primitives ------------------------------------------------------- */
+
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--dimmer);
+}
+
+.btn {
+  border: none;
+  background: var(--ink);
+  color: var(--bg);
+  padding: 15px;
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+  text-align: center;
+}
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.accent { background: var(--accent); color: var(--bg); }
+.btn.ghost {
+  background: none;
+  border: 1px solid var(--rule2);
+  color: var(--dim);
+  font-weight: 400;
+}
+.btn.ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--ink); }
+
+.field {
+  background: var(--bg);
+  border: 1px solid var(--rule2);
+  padding: 13px;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 16px; /* 16px so iOS does not zoom the viewport on focus */
+  outline: none;
+  width: 100%;
+}
+.field:focus { border-color: var(--accent); }
+
+.hint { font-size: 12px; line-height: 1.75; color: var(--dimmer); }
+.body { font-size: 12.5px; line-height: 1.85; color: var(--dim); text-wrap: pretty; }
+
+.rowline {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.sep { border-top: 1px solid var(--rule2); padding-top: 14px; }
+
+/* ---- depletion meter --------------------------------------------------- */
+
+.meter { height: 6px; background: var(--rule); overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--accent); }
+
+/* ---- refusal list ------------------------------------------------------ */
+
+.refusal {
+  display: flex;
+  gap: 9px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--dim);
+}
+.refusal > .x { color: var(--accent); }
+
+/* ---- app shell --------------------------------------------------------- */
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: clamp(20px, 4vw, 52px);
+  padding: clamp(20px, 4vh, 44px) clamp(16px, 5vw, 60px) 68px;
+}
+
+.rail { flex: 0 0 auto; width: min(100%, 224px); display: flex; flex-direction: column; gap: 20px; }
+
+.tabs { display: flex; border: 1px solid var(--rule2); }
+.tabs > button {
+  flex: 1; background: none; color: var(--dimmer); border: none;
+  padding: 10px 6px; font-family: var(--mono); font-size: 12px; cursor: pointer;
+}
+.tabs > button.on { background: var(--ink); color: var(--bg); font-weight: 700; }
+
+.navrow {
+  display: flex; align-items: baseline; gap: 9px; width: 100%;
+  background: none; border: none; border-top: 1px solid var(--rule);
+  padding: 11px 0; color: var(--dim);
+  font-family: var(--mono); font-size: 12.5px; cursor: pointer; text-align: left;
+}
+.navrow.on { border-top-color: var(--accent); color: var(--ink); }
+.navrow .n { color: var(--dimmer); }
+
+/* The 380px frame is the design's unit of truth. Below that width it stops
+   being a frame and becomes the page. */
+.frame {
+  width: min(100%, 380px);
+  height: min(84vh, 812px);
+  min-height: 620px;
+  border: 1px solid var(--rule2);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.frame > header {
+  flex: 0 0 auto;
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--rule);
+}
+.frame > .scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 18px 15px 22px;
+  display: flex;
+  flex-direction: column;
+}
+
+.chip {
+  border: 1px solid var(--rule2); background: none; color: var(--dim);
+  padding: 6px 10px; font-family: var(--mono); font-size: 11px; cursor: pointer;
+}
+.chip.on { color: var(--dimmer); }
+
+.screen { display: flex; flex-direction: column; gap: 18px; }
+
+@media (max-width: 760px) {
+  .shell { padding: 14px 12px 40px; gap: 16px; }
+  .rail { width: 100%; }
+  .frame { height: auto; min-height: 0; border: none; width: 100%; }
+  .frame > header { padding: 10px 0; }
+  .frame > .scroll { padding: 16px 0 0; overflow: visible; }
+}
