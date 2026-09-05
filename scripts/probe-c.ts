@@ -22,6 +22,7 @@ import {
   type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { installUnwind, emergencyUnsubscribe, stillArmed, setUnwindTarget } from "./unwind.js";
 import { EC, NETWORK, TOPICS } from "../packages/leash-ec/src/constants.js";
 
 const RPC = process.env.EC_RPC_URL ?? "https://api.infra.testnet.somnia.network";
@@ -195,4 +196,18 @@ async function main() {
   console.log();
 }
 
-main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+// This script arms a subscription on the PROBE handler — a different contract
+// from the Deadhand one — so it must name its own unwind target. It previously
+// armed one and never disarmed it on any path, success included.
+setUnwindTarget(HANDLER);
+installUnwind();
+main()
+  .then(async () => {
+    if (await stillArmed()) {
+      console.log("  disarming the probe subscription");
+      await emergencyUnsubscribe();
+    }
+    if (await stillArmed()) { console.error("EXITING NON-ZERO: probe subscription still armed"); process.exit(1); }
+    process.exit(0);
+  })
+  .catch(async (e) => { console.error(e); await emergencyUnsubscribe(); process.exit(1); });

@@ -19,7 +19,7 @@ import {
   type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { installUnwind, emergencyUnsubscribe } from "./unwind.js";
+import { installUnwind, emergencyUnsubscribe, stillArmed } from "./unwind.js";
 import { EC, NETWORK, TOPICS } from "../packages/leash-ec/src/constants.js";
 
 const RPC = process.env.EC_RPC_URL ?? "https://api.infra.testnet.somnia.network";
@@ -99,5 +99,9 @@ async function main() {
 // This script arms a subscription, so it must be able to disarm one.
 installUnwind();
 main()
-  .then(() => process.exit(0))
+  .then(async () => {
+    // A mined unsubscribe is not a cancelled subscription; read it back.
+    if (await stillArmed()) { console.error("EXITING NON-ZERO: subscription still armed"); await emergencyUnsubscribe(); process.exit(1); }
+    process.exit(0);
+  })
   .catch(async (e) => { console.error(e); await emergencyUnsubscribe(); process.exit(1); });

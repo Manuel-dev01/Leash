@@ -10,7 +10,8 @@
  * address, and the refusal ticker names errors that genuinely exist as
  * selectors in the source a judge can clone.
  */
-import { pub, addNetwork, errName, fmt, REGISTRY, EXPLORER, addrUrl, erc20Abi, registryAbi, COLLATERAL } from "./chain.js";
+import { pub, addNetwork, errName, REGISTRY, addrUrl, COLLATERAL } from "./chain.js";
+import { readHeld } from "./held.js";
 import type { Address } from "viem";
 import "./design.css";
 
@@ -71,23 +72,13 @@ async function main() {
   });
 
   // The headline stat. Read from chain, never hardcoded — the whole point of the
-  // number is that it is checkable.
-  if (!REGISTRY) { paint("—"); return; }
-  try {
-    const [bal, clean] = await Promise.all([
-      pub.readContract({ address: COLLATERAL, abi: erc20Abi, functionName: "balanceOf", args: [REGISTRY as Address] }) as Promise<bigint>,
-      pub.readContract({ address: REGISTRY as Address, abi: registryAbi, functionName: "holdsNoFunds" }) as Promise<boolean>,
-    ]);
-    paint(fmt(bal) === "0" ? "0.00" : fmt(bal));
-    $("sweepnote").textContent = clean
-      ? `balance back to ${fmt(bal) === "0" ? "0.00" : fmt(bal)}`
-      : "UNATTRIBUTED BALANCE — see doctor";
-    if (!clean) $("sweepnote").setAttribute("style", "font-size:11.5px;color:var(--accent)");
-  } catch {
-    // An unreachable RPC must not print a confident zero.
-    paint("—");
-    $("sweepnote").textContent = "chain unreachable";
-  }
+  // number is that it is checkable. The read itself lives in `held.ts` with no
+  // DOM in it, so verify.ts can run THIS code against a dead RPC rather than a
+  // test-local copy of it.
+  const h = await readHeld(pub, REGISTRY, COLLATERAL);
+  paint(h.value);
+  $("sweepnote").textContent = h.note;
+  if (h.read && !h.clean) $("sweepnote").setAttribute("style", "font-size:11.5px;color:var(--accent)");
 }
 
 main();

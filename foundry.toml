@@ -11,6 +11,11 @@ solc_version = "0.8.30"
 optimizer = true
 via_ir = true
 optimizer_runs = 200
+# The immutability claim is checked against the COMPILER's instruction listing,
+# not against a linear disassembly of the deployed bytes. A linear scan reports
+# DELEGATECALL inside solc's trailing 32-byte data blob, and `cast disassemble`
+# desyncs there too, so the check has to come from the compiler that emitted it.
+extra_output = ["evm.legacyAssembly"]
 
 [rpc_endpoints]
 somnia_testnet = "https://dream-rpc.somnia.network"

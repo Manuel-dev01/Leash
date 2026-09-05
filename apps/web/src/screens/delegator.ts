@@ -11,7 +11,7 @@ import {
   pub, wallet, connect, addNetwork, onRightChain, registryAbi, erc20Abi,
   REGISTRY, COLLATERAL, txUrl, fmt, errName,
 } from "../chain.js";
-import { state, set } from "../state.js";
+import { state, set, staleness } from "../state.js";
 import type { Address, Hex } from "viem";
 
 const esc = (s: string) =>
@@ -294,6 +294,20 @@ export async function monitorData(): Promise<MonitorData | null> {
   return { m, remaining, clean, held };
 }
 
+/**
+ * How old the figures on screen are, computed — never a fixed sentence.
+ *
+ * "every figure above is read from the contract" is only true of a read that
+ * completed. Polls fail; this says which case the reader is looking at.
+ */
+export function freshnessLine(): string {
+  const f = staleness();
+  if (!f.known) return '<span class="hint">not read from the contract yet.</span>';
+  if (!f.stale) return '<span class="hint">read from the contract ' + f.ageS + "s ago.</span>";
+  return '<span class="hint" style="color:var(--accent)">last read from the contract ' + f.ageS +
+    "s ago — the chain is not answering, so these figures are stale.</span>";
+}
+
 export function monitorScreen(d: MonitorData | null): string {
   if (!state.mandateId) {
     return '<div class="screen"><span class="eyebrow">05 / monitor</span><p class="body" style="margin:0">no mandate yet. create one above, or open this page with <code>?m=</code> set.</p></div>';
@@ -330,7 +344,10 @@ export function monitorScreen(d: MonitorData | null): string {
     '<span style="font-size:12px;color:var(--dimmer)">held_by_registry</span>',
     '<span style="font-size:12.5px;color:' + (d.clean ? "var(--ink)" : "var(--accent)") + '">' +
       fmt(d.held) + (d.clean ? "" : " UNATTRIBUTED") + "</span></div>",
-    '<p class="body" style="margin:0">every figure above is read from the contract. the registry holds nothing that is not owed to a named party.</p>',
+    // The claim is conditional on the read having happened. It used to be
+    // unconditional, and stayed on screen unchanged through every failed poll.
+    freshnessLine(),
+    '<p class="body" style="margin:0">the registry holds nothing that is not owed to a named party.</p>',
     '<button id="d-torevoke" class="btn ghost">ending it &rarr;</button>',
     "</div>",
   ].join("");

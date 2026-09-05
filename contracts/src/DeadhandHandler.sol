@@ -24,10 +24,7 @@ interface IMandateRegistry {
  * `somiPaymentPerOrder()`), acts for the account that armed it, and its action
  * is an order. This holds ONE subscription for all delegations, acts on many at
  * once because a resolution is a shared moment rather than a per-user threshold,
- * and its action is a permission change plus a payout to someone else. Measured:
- * ignoring a finalization that is not ours costs ~789 gas, and the chain charges
- * on gas USED rather than `gasLimit`, which is what makes subscribing to every
- * resolution affordable.
+ * and its action is a permission change plus a payout to someone else.
  *
  * DELETABLE BY CONSTRUCTION. Everything here calls a permissionless registry
  * entry point. Delete this contract and its subscription and the registry is
@@ -47,16 +44,44 @@ contract DeadhandHandler is SomniaEventHandler {
     /**
      * Mandates settled per invocation.
      *
-     * Set from MEASUREMENT, never inherited as a nice round number. The probe
-     * handler managed 32 doing representative writes; the real path decodes,
-     * unpacks `marketKey`, walks a cursor, and sweeps, so it is re-measured and
-     * re-set once wired. If the number lands at 18, the cap is 18.
+     * Set from a two-point FIT — one small batch and one large one on identical
+     * bytecode — never from a single batch's average, which is a fixed-cost
+     * artefact. The same handler once "measured" 171,964 and then 106,422 gas
+     * per mandate from single points whose true marginal cost was neither.
      */
     uint256 public batchCap;
 
     uint256 public subscriptionId;
     uint256 public invocations;
     uint256 public marketsSettled;
+
+    /**
+     * H1 INSTRUMENTATION — here to make one specific wrong answer impossible,
+     * and worth the gas for exactly that reason.
+     *
+     * A previous deployment recorded 474 invocations and zero settles. Two
+     * explanations were indistinguishable from outside:
+     *
+     *   H1a  our market's MarketFinalized never reached the handler
+     *   H1b  it reached the handler and the pendingSettlement == 0 early exit
+     *        swallowed it (a marketId keying mismatch)
+     *
+     * They were indistinguishable because the only code path that could tell
+     * them apart was the one deleted to save gas. Note that `invocations` does
+     * not separate them — it counts every delivery, not the delivery of OUR
+     * market — and neither does a plain skip counter, which is already
+     * derivable as `invocations - marketsSettled`.
+     *
+     * What separates them is PER-MARKET delivery. After a finalization we
+     * watched for: `seen[marketId] == 0` is H1a, `seen[marketId] > 0` with no
+     * settle is H1b. One cold SSTORE (~22,100 gas) on a ~65,000 gas skip path,
+     * readable by a single `eth_call` forever afterwards — which a log is not,
+     * because `eth_getLogs` is capped at 1000 blocks, i.e. 100 seconds of
+     * history at 0.1s blocks.
+     */
+    mapping(bytes32 => uint32) public seen;
+    uint256 public skippedNoPending;
+    uint256 public skippedShape;
 
     event Deadhand(
         bytes32 indexed marketId,
@@ -66,7 +91,8 @@ contract DeadhandHandler is SomniaEventHandler {
         bool drained,
         uint256 gasUsed
     );
-    event DeadhandSkipped(bytes32 indexed marketId, string reason);
+    /** Topic-only by design: no string, no data, ~1,125 gas. */
+    event DeadhandSaw(bytes32 indexed marketId);
     event DeadhandFailed(bytes32 indexed marketId, bytes reason);
 
     error NotOwner();
@@ -91,9 +117,9 @@ contract DeadhandHandler is SomniaEventHandler {
      *
      * Topics 1-3 are left wildcard deliberately. Indexed arguments ARE filterable
      * at the precompile — `marketId` and `pool` both are — but a mandate set
-     * changes continuously, and one subscription must serve every delegation
-     * (§4.3 r17). Since ignoring an irrelevant finalization costs ~789 gas, we
-     * pay for breadth and filter in the handler.
+     * changes continuously, and one subscription must serve every delegation.
+     * Ignoring an irrelevant finalization is cheap enough (see the skip path)
+     * that we pay for breadth and filter in the handler.
      */
     function subscribeTo(address emitter, bytes32 topic0, uint64 gasLimit, uint64 maxFeePerGas)
         external
@@ -114,9 +140,16 @@ contract DeadhandHandler is SomniaEventHandler {
         return subscriptionId;
     }
 
+    /**
+     * Idempotent: a no-op when nothing is armed. That is what makes it safe to
+     * call from an unwind path, which by definition runs when the caller has
+     * lost track of the current state.
+     */
     function unsubscribeNow() external onlyOwner {
-        SomniaExtensions.unsubscribe(subscriptionId);
+        uint256 id = subscriptionId;
+        if (id == 0) return;
         subscriptionId = 0;
+        SomniaExtensions.unsubscribe(id);
     }
 
     /**
@@ -128,7 +161,7 @@ contract DeadhandHandler is SomniaEventHandler {
         require(ok, "withdraw failed");
     }
 
-    /** marketKey is packed `(pool << 64) | nonce`, not an id (§4.6 B3). */
+    /** marketKey is packed `(pool << 64) | nonce`, not an id. */
     function unpackMarketKey(uint256 key) public pure returns (address pool, uint64 nonce) {
         pool = address(uint160(key >> 64));
         nonce = uint64(key);
@@ -146,26 +179,29 @@ contract DeadhandHandler is SomniaEventHandler {
 
         // MarketFinalized(bytes32 indexed marketId, address indexed pool, uint256 marketKey)
         if (eventTopics.length < 3 || data.length < 32) {
-            emit DeadhandSkipped(bytes32(0), "shape"); // rare, so worth naming
+            ++skippedShape;
             return;
         }
         bytes32 marketId = eventTopics[1];
         address pool = address(uint160(uint256(eventTopics[2])));
 
+        // Recorded BEFORE the decision, so it answers "was this delivered?"
+        // independently of what we then decided to do about it.
+        seen[marketId] = seen[marketId] + 1;
+        emit DeadhandSaw(marketId);
+
         // Most finalizations on this venue are nothing to do with us, so this is
         // the hot path: it runs on every resolution the venue produces and only
         // rarely leads to work.
         //
-        // MEASURED at ~109,000 gas charged (~0.0007 STT), NOT the 789 gas a probe
-        // handler suggested — the external call into the registry, the topic
-        // decode and the event dominate. At ~1 finalization per 10s that is
-        // ~6.4 STT/day to sit armed, which is why we subscribe for demo windows
-        // and unsubscribe after rather than leaving it running.
-        //
-        // The skip emits nothing: a string in an event on the path taken by
-        // every irrelevant resolution is pure cost, and the count is derivable
-        // from `invocations` minus `marketsSettled`.
+        // MEASURED IN ISOLATION at 0.00044017 STT (~64,700 gas at 6.8 gwei) by
+        // arming a handler that holds no mandates, so every invocation is a pure
+        // skip. Figures derived by dividing a MIXED window by an invocation
+        // count disagreed by 4x and were not measurements. At ~1 finalization
+        // per 10s that is ~3.8 STT/day to sit armed, which is why we subscribe
+        // for demo windows and unsubscribe after rather than leaving it running.
         if (registry.pendingSettlement(marketId) == 0) {
+            ++skippedNoPending;
             return;
         }
 

@@ -108,21 +108,35 @@ async function loadMarkets() {
       label: m.asset + " · resolves in " + Math.max(0, Math.floor((Number(m.expiry) - Date.now() / 1000) / 60)) + "m",
     }));
     // Default the draft to everything found, so the delegator edits rather than
-    // starts from nothing.
+    // starts from nothing. This is a DRAFT, not a fact about any mandate:
+    // `allowedKnown` stays false until refreshMandate checks it on chain.
     const allowed = new Set(markets.map((m) => m.marketId as string));
+    if (r.errors > 0) {
+      set({ markets, allowed, error: `${r.live.length} markets live, ${r.errors} checks failed — the list may be short` });
+      return;
+    }
     set({ markets, allowed });
   } catch (e) {
     set({ error: (e as Error).message.split("\n")[0] ?? "market discovery failed" });
   }
 }
 
-/** If a mandate is open, re-read it. This is what makes the limits real. */
+/**
+ * If a mandate is open, re-read it. This is what makes the limits real.
+ *
+ * A failed poll leaves the last good read on screen — blanking the numbers on
+ * one flaky RPC call would be worse — but it must NOT leave the screen implying
+ * those numbers are current. `chainAt` only advances on a read that completed,
+ * and the screens render their own age from it.
+ */
 async function refreshMandate() {
   try {
-    monitor = await monitorData();
+    const fresh = await monitorData();
     // A delegate arriving by link needs the mandate's own market list, not the
-    // draft one, or the allowed/not-allowed line would be a guess.
-    if (monitor && state.markets.length > 0) {
+    // draft one, or the allowed/not-allowed line would be a guess. If any check
+    // fails the whole set is unknown: half a set silently keeps the optimistic
+    // draft, which would print "allowed" for a market the mandate excludes.
+    if (fresh && state.markets.length > 0) {
       const allowed = new Set<string>();
       for (const m of state.markets) {
         const ok = (await pub.readContract({
@@ -132,9 +146,15 @@ async function refreshMandate() {
         if (ok) allowed.add(m.marketId as string);
       }
       state.allowed = allowed;
+      state.allowedKnown = true;
     }
+    monitor = fresh;
+    set({ chainAt: Date.now() });
+  } catch {
+    // Nothing is asserted about the figures already on screen. They age, and
+    // the screens say so.
     set({});
-  } catch { /* leave the last good read on screen rather than blanking it */ }
+  }
 }
 
 // ---- wiring --------------------------------------------------------------

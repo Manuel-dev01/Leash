@@ -14,7 +14,7 @@ import {
   pub, wallet, connect, addNetwork, onRightChain, registryAbi,
   REGISTRY, txUrl, fmt, errName,
 } from "../chain.js";
-import { state, set } from "../state.js";
+import { state, set, staleness } from "../state.js";
 import type { MonitorData } from "./delegator.js";
 import type { Address, Hex } from "viem";
 
@@ -50,6 +50,10 @@ function envelope(d: MonitorData | null): string {
   const revoked = d.m[6];
   const live = !revoked && BigInt(Math.floor(Date.now() / 1000)) < expiry;
   const pct = cap === 0n ? 0 : Number((d.remaining * 100n) / cap);
+  // A budget figure that quietly stopped updating is worse than no figure: the
+  // delegate reads headroom that may already be spent. Polls fail, so the
+  // envelope carries its own age.
+  const f = staleness();
   return [
     '<div style="display:flex;flex-direction:column;gap:8px">',
     '<div class="rowline"><span style="font-size:12px;color:var(--dimmer)">you may still spend</span>',
@@ -58,6 +62,10 @@ function envelope(d: MonitorData | null): string {
     '<div class="meter"><i style="width:' + Math.max(0, Math.min(100, pct)) + '%"></i></div>',
     '<span class="hint">' + fmt(used) + " of " + fmt(cap) + " used · max " + fmt(perTrade) +
       " per order · " + (live ? "live" : revoked ? "revoked" : "expired") + "</span>",
+    f.stale
+      ? '<span class="hint" style="color:var(--accent)">chain not answering — this envelope is ' +
+        (f.known ? f.ageS + "s old" : "unread") + ". the contract still enforces it; this screen may be behind.</span>"
+      : "",
     "</div>",
   ].join("");
 }
@@ -176,7 +184,10 @@ export function marketScreen(d: MonitorData | null): string {
   const mk = state.markets[state.activeMarket];
   if (!mk) return '<div class="screen"><span class="eyebrow">02 / market_detail</span><p class="hint">no market selected.</p></div>';
   const secs = Number(mk.expiry) - Math.floor(Date.now() / 1000);
-  const allowed = state.allowed.has(mk.marketId);
+  // Before refreshMandate has checked the mandate on chain, `state.allowed` is
+  // the DRAFT set — every discovered market — which would print "allowed" for a
+  // market the mandate excludes. Unchecked is its own answer.
+  const allowed = state.allowedKnown ? state.allowed.has(mk.marketId) : null;
   return [
     '<div class="screen">',
     '<span class="eyebrow">02 / market_detail</span>',
@@ -187,7 +198,8 @@ export function marketScreen(d: MonitorData | null): string {
     '<div class="rowline" style="padding:8px 0;border-top:1px solid var(--rule)"><span style="font-size:12px;color:var(--dimmer)">resolves</span><span style="font-size:12.5px">' +
       (secs > 0 ? Math.floor(secs / 60) + "m" : "resolved") + "</span></div>",
     '<div class="rowline" style="padding:8px 0;border-top:1px solid var(--rule)"><span style="font-size:12px;color:var(--dimmer)">on_delegator_list</span><span style="font-size:12.5px;color:' +
-      (allowed ? "var(--ink)" : "var(--accent)") + '">' + (allowed ? "allowed" : "not allowed") + "</span></div>",
+      (allowed === true ? "var(--ink)" : allowed === false ? "var(--accent)" : "var(--dimmer)") + '">' +
+      (allowed === true ? "allowed" : allowed === false ? "not allowed" : "not checked yet") + "</span></div>",
     "</div>",
     envelope(d),
     '<button id="m-back" class="btn ghost">&larr; place_order</button>',

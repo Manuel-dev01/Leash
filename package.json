@@ -9,7 +9,10 @@
   "scripts": {
     "doctor": "tsx scripts/doctor.ts",
     "recon": "tsx scripts/recon.ts",
-    "demo-reset": "tsx scripts/demo-reset.ts"
+    "demo-reset": "tsx scripts/demo-reset.ts",
+    "verify": "tsx scripts/verify.ts",
+    "measure-skip": "tsx scripts/measure-skip.ts",
+    "stage3": "tsx scripts/stage3-live.ts"
   },
   "devDependencies": {
     "dotenv": "^16.4.7",

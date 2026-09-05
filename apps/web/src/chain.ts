@@ -26,7 +26,7 @@ export const REGISTRY: string =
   ENV.VITE_REGISTRY ??
   "0x7ca9dA7Be8C8F8Ca5E1c9821061cD4fc23418864";
 export const HANDLER: string =
-  ENV.VITE_HANDLER ?? "0xDED8c0bE939cCe19f27176E5F33deA7b2A4DE35C";
+  ENV.VITE_HANDLER ?? "0xBffC022eC263C43B80bd040ded7e0A4a43101a97";
 
 export const chain = {
   id: CHAIN_ID,

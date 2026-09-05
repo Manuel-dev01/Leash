@@ -37,6 +37,27 @@ export interface State {
   busy: boolean;
   error: string;
   log: { html: string }[];
+  /**
+   * When the mandate figures on screen were last read from the contract, and
+   * whether the allowed-market set has been checked against it.
+   *
+   * These exist because the monitor screen says "every figure above is read
+   * from the contract" — a claim that was false whenever a poll failed, since
+   * the failure was swallowed and the previous read stayed on screen with
+   * nothing marking it as old. A limit displayed without having been checked is
+   * the exact thing this app is not allowed to do.
+   */
+  chainAt: number;
+  allowedKnown: boolean;
+}
+
+/** Three poll intervals. Past this, say so rather than implying freshness. */
+export const STALE_MS = 25_000;
+
+export function staleness(now = Date.now()): { known: boolean; stale: boolean; ageS: number } {
+  if (state.chainAt === 0) return { known: false, stale: true, ageS: 0 };
+  const ageS = Math.round((now - state.chainAt) / 1000);
+  return { known: true, stale: now - state.chainAt > STALE_MS, ageS };
 }
 
 export const state: State = {
@@ -57,6 +78,8 @@ export const state: State = {
   busy: false,
   error: "",
   log: [],
+  chainAt: 0,
+  allowedKnown: false,
 };
 
 type Listener = () => void;
