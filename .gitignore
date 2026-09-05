@@ -30,3 +30,7 @@ contracts/broadcast/
 
 # forge-std is cloned by setup, not vendored
 contracts/lib/
+
+# build docs: working notes, not part of the public repo
+CLAUDE.md
+ROADMAP.md
