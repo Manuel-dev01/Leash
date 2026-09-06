@@ -114,6 +114,30 @@ export async function emergencyUnsubscribe(): Promise<void> {
   }
 }
 
+/**
+ * Unwind, and keep trying.
+ *
+ * One attempt is not enough, and the reason is structural rather than bad luck:
+ * the thing that makes a run fail is usually the RPC, and the RPC is what the
+ * unwind needs. A measurement run died on an `eth_call` timeout, and the single
+ * unwind attempt hit the same unresponsive endpoint and gave up — leaving the
+ * subscription armed and spending, which is precisely the outcome the whole
+ * unwind path exists to prevent.
+ */
+export async function unwindPersistently(attempts = 6): Promise<boolean> {
+  for (let i = 0; i < attempts; i++) {
+    await emergencyUnsubscribe();
+    try {
+      if (!(await stillArmed())) return true;
+    } catch { /* could not even check; treat as still armed and keep trying */ }
+    const wait = 3_000 * 2 ** i;
+    console.error(`  [unwind] still armed after attempt ${i + 1}/${attempts}, retrying in ${wait}ms`);
+    await new Promise((r) => setTimeout(r, wait));
+  }
+  console.error(`  [unwind] GIVING UP after ${attempts} attempts. THE SUBSCRIPTION IS STILL ARMED and is spending on every finalization. Cancel it by hand.`);
+  return false;
+}
+
 let installed = false;
 
 /**

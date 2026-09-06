@@ -525,9 +525,24 @@ async function main() {
     const sxx = use.reduce((a, p) => a + p.n * p.n, 0), sxy = use.reduce((a, p) => a + p.n * p.gas, 0);
     const marginal = (k * sxy - sx * sy) / (k * sxx - sx * sx);
     const fixed = (sy - marginal * sx) / k;
+
+    // The cap must EQUAL what the fit implies, not merely be accompanied by a
+    // fit. Asserting only that two points exist let a cap of 32 pass green
+    // while the fitted value was 13 — the number on chain had been raised for a
+    // measurement run and never put back. A verifier that checks the evidence
+    // exists but not that the shipped value follows from it is checking the
+    // paperwork rather than the thing.
+    const SHIP_GAS_LIMIT = 8_000_000;
+    const WORKING_BUDGET = (SHIP_GAS_LIMIT * 5) / 6;
+    const binds = Math.floor((WORKING_BUDGET - fixed) / marginal);
+    const want = Math.floor(binds * 0.5);
     const need = fixed + marginal * Number(cap);
-    return `cap ${cap} from ${k} points: fixed ~${Math.round(fixed).toLocaleString()} + ` +
-      `~${Math.round(marginal).toLocaleString()}/mandate; a full batch needs ~${Math.round(need).toLocaleString()} gas`;
+    must(Number(cap) === want,
+      `deployed batchCap is ${cap}, but the fit implies ${want} (binds at ~${binds}, 50% headroom). ` +
+      `A full batch at ${cap} needs ~${Math.round(need).toLocaleString()} gas against a ${WORKING_BUDGET.toLocaleString()} budget.`);
+    return `cap ${cap} == fit (${k} points: fixed ~${Math.round(fixed).toLocaleString()} + ` +
+      `~${Math.round(marginal).toLocaleString()}/mandate; binds ~${binds}, shipped at 50%); ` +
+      `a full batch needs ~${Math.round(need).toLocaleString()} gas`;
   });
 
   await check("skip-cost", async () => {

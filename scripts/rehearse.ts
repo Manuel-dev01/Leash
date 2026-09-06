@@ -42,7 +42,7 @@ import {
   type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { installUnwind, emergencyUnsubscribe, stillArmed } from "./unwind.js";
+import { installUnwind, emergencyUnsubscribe, stillArmed, unwindPersistently } from "./unwind.js";
 import { EC, NETWORK, OrderKind, TOPICS } from "../packages/leash-ec/src/constants.js";
 import { ecClient, discoverMarkets, tradableMarketsDetailed } from "../packages/leash-ec/src/discover.js";
 
@@ -444,4 +444,4 @@ main()
     if (await stillArmed()) { console.error("EXITING NON-ZERO: subscription still armed"); await emergencyUnsubscribe(); process.exit(1); }
     process.exit(0);
   })
-  .catch(async (e) => { console.error(e); await emergencyUnsubscribe(); process.exit(1); });
+  .catch(async (e) => { console.error(e); await unwindPersistently(); process.exit(1); });

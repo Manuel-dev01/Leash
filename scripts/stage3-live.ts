@@ -26,7 +26,8 @@ import {
   parseAbi, decodeEventLog, keccak256, toHex, type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { installUnwind, emergencyUnsubscribe, stillArmed } from "./unwind.js";
+import { installUnwind, emergencyUnsubscribe, stillArmed, unwindPersistently } from "./unwind.js";
+import { poll } from "./retry.js";
 import { EC, NETWORK, OrderKind, TOPICS } from "../packages/leash-ec/src/constants.js";
 import { ecClient, discoverMarkets, tradableMarkets } from "../packages/leash-ec/src/discover.js";
 
@@ -271,11 +272,26 @@ async function main() {
   const deadline = startedAt + maxWaitS * 1000;
   let settledNow = 0n;
   console.log(`  subscribed id=${subId}, polling until settle (max ${maxWaitS}s)...`);
+  // A failed progress read is NOT a failed run. One eth_call timeout inside this
+  // loop once killed a fifty-minute measurement and lost the point it had spent
+  // twenty orders to get. `poll` returns null when it could not read, which is
+  // deliberately distinguishable from reading a zero.
   while (Date.now() < deadline) {
     await sleep(15_000);
-    settledNow = await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "marketsSettled" }) as bigint;
-    const pend = await pub.readContract({ address: REGISTRY, abi: regAbi, functionName: "pendingSettlement", args: [mk.marketId] }) as bigint;
-    if (settledNow > 0n && pend === 0n) { console.log(`  settled after ${Math.round((Date.now() - startedAt) / 1000)}s`); break; }
+    const s = await poll(() => pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "marketsSettled" }) as Promise<bigint>, { label: "marketsSettled" });
+    if (s === null) continue;
+    settledNow = s;
+    const pend = await poll(() => pub.readContract({ address: REGISTRY, abi: regAbi, functionName: "pendingSettlement", args: [mk.marketId] }) as Promise<bigint>, { label: "pendingSettlement" });
+    if (pend === null) continue;
+    // Break on OUR settle having happened, not on the market being drained.
+    // When pending exceeds batchCap the handler settles a capped slice and
+    // leaves the rest, so `pend == 0` never arrives and the loop runs to its
+    // deadline reporting "no settle" for a run that settled perfectly well.
+    // Stale reservations from a previous crashed run are enough to cause it.
+    if (settledNow > settledBefore) {
+      console.log(`  settled after ${Math.round((Date.now() - startedAt) / 1000)}s (pending left on market: ${pend})`);
+      break;
+    }
   }
   if (settledNow === 0n) console.log("  WARNING: hit the poll deadline with no settle");
 
@@ -287,7 +303,7 @@ async function main() {
     console.log("  unsubscribed");
   } catch (e) {
     console.error("  unsubscribe FAILED, retrying via unwind:", (e as Error).message.split(String.fromCharCode(10))[0]);
-    await emergencyUnsubscribe();
+    await unwindPersistently();
   }
   if (await stillArmed()) {
     throw new Error(`SUBSCRIPTION STILL ARMED on ${HANDLER} — cancel it by hand NOW; it spends on every finalization`);
@@ -428,4 +444,4 @@ main()
     if (await stillArmed()) { console.error("EXITING NON-ZERO: subscription still armed"); process.exit(1); }
     process.exit(0);
   })
-  .catch(async (e) => { console.error(e); await emergencyUnsubscribe(); process.exit(1); });
+  .catch(async (e) => { console.error(e); await unwindPersistently(); process.exit(1); });

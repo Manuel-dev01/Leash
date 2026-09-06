@@ -1,0 +1,207 @@
+# The four adversarial questions
+
+Answered in writing, as Stage 5 requires, on 6 Sep against the deployed build.
+Written to be read by someone trying to break the submission, not to reassure
+anyone. Where the honest answer is "this is a real weakness", it says so.
+
+Registry `0x7ca9dA7Be8C8F8Ca5E1c9821061cD4fc23418864` ·
+handler `0xBffC022eC263C43B80bd040ded7e0A4a43101a97`
+
+---
+
+## 1. Where does the demo depend on something we can't control?
+
+Four places, in descending order of how likely they are to bite.
+
+### (a) A market has to resolve, on camera, inside the demo window
+
+Beat 3 needs a real `MarketFinalized`. We cannot make one happen. Measured
+constraints:
+
+- The venue runs **exactly six live markets at a time** — BTC and ETH, in a
+  **60s**, a **300s** and a **3600s** window. That is the whole venue, not a
+  sample: three independent discovery sweeps over 10, 30 and 80 windows each
+  returned the same six.
+- Finalization is **punctual**: over 40 finalizations matched to their
+  `MarketCreated` expiry, min −300s, median 0s, max +60s. An earlier note
+  claiming it "lags unpredictably" was wrong and was retracted — the late runs
+  were our own setup time.
+- Seeding a 3-mandate rehearsal takes ~50s, so the 300s series is usable only in
+  roughly the **first half of its five-minute life**. At the wrong moment there
+  is no usable market and the correct behaviour is to wait, not to fail.
+
+**Mitigation:** `rehearse.ts` picks a market whose ttl exceeds setup with margin
+and reports `no-window` as a distinct outcome from a failure. The recorded
+backup video removes this dependency entirely on the day, which is why the
+video is non-negotiable.
+
+**Residual risk: real.** If the venue stops creating markets, beats 2 and 3 stop
+being demonstrable live. Nothing we build changes that.
+
+### (b) The public RPC
+
+Two failures already observed, both on our critical path:
+
+- **A single `eth_call` timeout killed a 50-minute measurement run** and left a
+  subscription armed, because the same outage that broke the run also broke the
+  unwind. Now: progress reads retry and tolerate failure (`poll` returns null,
+  distinguishable from reading a zero), and the unwind retries with backoff.
+- **`eth_getLogs` does not honour topic filters on this endpoint.** Verified with
+  the probe pattern: a request for a `topic0` matching nothing returned the same
+  3 logs as the correct hash. `viem`'s `getLogs({ event })` re-filters
+  client-side and was never wrong; a raw `client.request` has no such
+  protection, and `doctor.ts` used one.
+
+**Mitigation:** no third party sits between opening the app and placing an
+order — discovery reads `MarketCreated` straight from the module singleton, and
+`verify.ts` asserts both that no shipped file names an indexer host and that
+discovery *throws* against a dead RPC rather than reporting an empty venue.
+
+### (c) The book
+
+We price takers to the top of the range because a taker is charged the **fill**
+price, not the price it offered — aggression is free and it removes the
+stale-book failure mode. A bid priced 3 cents through a 0.515 ask still rested
+with zero fills once, because the quote was gone by inclusion.
+
+**Residual risk: a rehearsal can end with the order resting rather than filled.**
+`rehearse.ts` records `filled` and `rested` separately rather than calling a rest
+a pass.
+
+### (d) Our own gas
+
+`placeForDelegator` costs ~0.028 STT. The delegate key ran out mid-session once
+and surfaced as an opaque `Missing or invalid parameters`. `verify.ts` now fails
+when the delegate is under a floor sized for a full rehearsal set, and
+`rehearse.ts` checks the budget **before run one**.
+
+---
+
+## 2. Where would a dreamDEX engineer say "you rebuilt SpotStopOrderRegistry"?
+
+This is the question the submission most deserves to be attacked on, because the
+surface similarity is real: both subscribe to the `0x0100` precompile, both act
+on chain events, both are permissionless to trigger.
+
+**The honest version of their case.** `SpotStopOrderRegistry` watches
+`MarkPriceUpdated` and fires an order. We watch `MarketFinalized` and call a
+registry function. Squint, and that is one pattern with two event names.
+
+**Why it does not hold, in the order the differences matter:**
+
+1. **The beneficiary is not the trader.** Their registry fires an order *for the
+   account that armed it*. Ours performs a permission change and sweeps a payout
+   **to the delegator — a party who never traded**. A stop-order registry has no
+   vocabulary for returning funds to a third party, and that is structural, not
+   a missing feature.
+2. **The action is not an order.** `settleFinalizedMarket` releases exposure,
+   revokes breached mandates, and books refunds. Nothing it does is a trade.
+3. **One subscription, N beneficiaries.** `createPendingOrder` is `payable` and
+   charges `somiPaymentPerOrder()` — funding is **per user per order**. Ours is
+   one subscription serving every delegation, and measured settling **3 and 12
+   mandates in single validator invocations**, `drained=true` both times.
+
+**The reason the shapes differ is not cleverness, it is the event.** A price
+threshold is inherently per-user: your stop is not my stop. A resolution is
+inherently *shared* — every mandate on that market resolves in the same block.
+That is why one subscription can serve all of them and theirs structurally
+cannot.
+
+**What we must NOT say.** "And it is nearly free." That was true of a probe
+handler and is false of the shipped one: a skip costs **291,181 gas
+(0.001747086 STT)**, about **15.1 STT/day** to sit armed. The argument is about
+**shape, not price** — O(1) subscriptions against O(users × orders). Any
+price-based version of this argument invites a correction we would deserve.
+
+---
+
+## 3. Which limit is enforced in the frontend while we claim it's on-chain?
+
+**None — and this is asserted, not asserted-by-assertion.**
+
+Every limit is checked inside `placeForDelegator` before any collateral moves
+([MandateRegistry.sol:264-327](../contracts/src/MandateRegistry.sol#L264-L327)),
+and the delegate has no route to the pool that bypasses it, because no such
+route is grantable: `placeBinaryOrderFor` is gated by `OnlyApprovedContracts()`
+and rejects **even the owner acting for itself** (Probe A, three senders, raw
+`eth_call` data).
+
+The frontend's own honesty is checked by `verify.ts`:
+
+- **`assertive-copy`** — every user-visible string claiming a property must be
+  computed from a check or listed with what backs it. It found six on its first
+  run that had been written by hand and not vetted.
+- **`onscreen-figures-are-chain-derived`** — a negative test. `readHeld` (the
+  *shipped* function, called by verify rather than reimplemented) must return an
+  em dash against a dead RPC, never a confident `0.00`.
+
+**Two places where this was genuinely broken until this week, both now fixed:**
+
+- The monitor screen printed *"every figure above is read from the contract"*
+  **unconditionally**, while a failed poll left the previous read on screen with
+  nothing marking it stale. Both roles now render their own read age.
+- The delegate's market screen printed *"allowed"* from the **draft** market set
+  before the mandate had been checked on chain. It now says "not checked yet".
+
+**The one deliberate exception, declared:** the price line on `market_detail` is
+decorative and labelled *"indicative price line — not a mandate figure and not
+read from chain."* It ships under an explicit, recorded override of the
+read-only-mirror rule. A chart may be decorative; nothing that looks like a
+mandate limit may be.
+
+---
+
+## 4. What breaks if dreamDEX ships an upgrade?
+
+**Not hypothetical.** Binary pools were already upgraded once inside this
+hackathon: live pools are **beacon proxies**, and the beacon resolves to an
+implementation different from the one `ec-core` bundles as "verified
+2026-07-24". We resolve through the beacon and never scan a bundled address.
+
+What breaks, by blast radius:
+
+| If they change | Effect | Why we survive, or do not |
+|---|---|---|
+| `MarketFinalized`'s topic0 or shape | **Beat 3 stops.** Handler stops being invoked, or decodes garbage | Topics are **pinned AND derived**, and boot fails loudly on disagreement. The handler's shape check increments `skippedShape` rather than silently proceeding. `seen[marketId]` distinguishes "never delivered" from "delivered and skipped" |
+| `placeBinaryOrder`'s signature | **Beat 2 stops.** Orders revert | Fails loudly at the revert. No silent path |
+| Pool implementation behind the beacon | Probably nothing | We resolve through the beacon at runtime |
+| Pool recycling behaviour | Nothing | Every mandate is keyed by `marketId`, never by pool address. A pool that served our market a minute ago may now serve a different one, and `tradableMarkets` compares `params.market` to catch exactly that |
+| Collateral token or its decimals | Mispriced limits | `decimals()` is read, never assumed — testnet is 6dp tUSDC while mainnet EC is 18dp, so this genuinely differs by network |
+| `OnlyApprovedContracts` opening up | Nothing breaks; a better path appears | We would still not need it. The registry places as itself |
+
+**The structural answer.** `MandateRegistry` is immutable and admin-free by
+choice, so we cannot hot-patch a venue change — and that is the correct
+trade. The mitigation is that **Layer 2 is deletable**: if reactivity breaks,
+`settleFinalizedMarket` is permissionless and the delegator (or anyone) calls it
+directly. Proven live, from a stranger key with the handler unsubscribed and not
+in the path.
+
+**The honest residual.** If `placeBinaryOrder` changes signature mid-demo, we
+have no live order path and no way to patch an immutable contract. We would ship
+the recorded video and say so. That is the price of having no admin key, and it
+is a price worth paying for a product whose entire claim is that nobody can
+reach in.
+
+---
+
+## Open hypothesis carried into Stage 5
+
+**H1 — 474 invocations, zero settles** (observed on the previous handler
+deployment, `0xDED8c0bE…`).
+
+- **H1a** — our market's `MarketFinalized` never reached the handler.
+- **H1b** — it reached the handler and the `pendingSettlement == 0` early exit
+  swallowed it.
+
+**Distinguishing test:** `seen[marketId]` on the deployed handler, recorded
+*before* the handler decides anything. Zero after a finalization we watched for
+is H1a; non-zero with no settle is H1b.
+
+Note that `invocations` never separated these — it counts every delivery, not
+the delivery of *our* market — and neither would a plain skip counter, which is
+already `invocations − marketsSettled`.
+
+**Status: not reproduced, not retired.** Two runs on the current build, both
+`seen == 1` and both settled. That is not evidence the bug is gone; it is
+evidence the instrument works. It must not be reclassified as "probably fine" on
+the strength of runs that happened to work.
