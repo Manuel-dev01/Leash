@@ -35,6 +35,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { EC, NETWORK, TOPICS } from "../packages/leash-ec/src/constants.js";
 import { ecClient, discoverMarkets, tradableMarketsDetailed } from "../packages/leash-ec/src/discover.js";
 import { readHeld } from "../apps/web/src/held.js";
+import { capFrom, SHIP_GAS_LIMIT, WRAPPER_OVERHEAD, HEADROOM, type Point } from "./capfit.js";
 import { binaryPoolWriteAbi } from "@somnia-chain/markets-sdk";
 
 const RPC = process.env.EC_RPC_URL ?? "https://api.infra.testnet.somnia.network";
@@ -511,8 +512,7 @@ async function main() {
     const cap = await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "batchCap" }) as bigint;
     must(existsSync(".measurements/deadhand-fit.json"),
       "no measurement file — the cap is a number with a story attached");
-    const pts = (JSON.parse(readFileSync(".measurements/deadhand-fit.json", "utf8")) as
-      { n: number; gas: number; codeHash: string; firstEver: boolean; tx: string }[])
+    const pts = (JSON.parse(readFileSync(".measurements/deadhand-fit.json", "utf8")) as Point[])
       .filter((p) => p.codeHash.toLowerCase() === handlerHash.toLowerCase());
     must(pts.length > 0, `no measurement points on the deployed bytecode ${handlerHash.slice(0, 12)}…`);
     const distinct = new Set(pts.map((p) => p.n)).size;
@@ -520,52 +520,21 @@ async function main() {
       `cap is ${cap} from ${pts.length} point(s) at ${distinct} distinct batch size(s). ` +
       `One batch size is not a line — its gas-per-mandate is a fixed-cost artefact. ` +
       `Points so far: ${pts.map((p) => `n=${p.n}:${p.gas}`).join(", ")}`);
-    const warm = pts.filter((p) => !p.firstEver);
-    const use = new Set(warm.map((p) => p.n)).size >= 2 ? warm : pts;
-    const k = use.length;
-    const sx = use.reduce((a, p) => a + p.n, 0), sy = use.reduce((a, p) => a + p.gas, 0);
-    const sxx = use.reduce((a, p) => a + p.n * p.n, 0), sxy = use.reduce((a, p) => a + p.n * p.gas, 0);
-    const marginal = (k * sxy - sx * sy) / (k * sxx - sx * sx);
-    const fixed = (sy - marginal * sx) / k;
 
-    // The cap must EQUAL what the fit implies, not merely be accompanied by a
-    // fit. Asserting only that two points exist let a cap of 32 pass green
-    // while the fitted value was 13 — the number on chain had been raised for a
-    // measurement run and never put back. A verifier that checks the evidence
-    // exists but not that the shipped value follows from it is checking the
-    // paperwork rather than the thing.
-    // The subscription is armed at this limit, and the limit applies to the
-    // WHOLE invocation — what the receipt charges — while the fit above is in
-    // BODY gas, measured by `gasleft()` inside `_onEvent`. The gap is the
-    // precompile dispatch, the onEvent wrapper and intrinsic cost.
-    //
-    // That gap is MEASURED, not assumed: receipt gasUsed minus the event's
-    // in-body figure is 107,556 gas on every one of the three settles, at n=3,
-    // n=12 and n=32. Identical to the gas, which is what a fixed wrapper should
-    // look like. An earlier version of this line reserved "5/6 of the limit",
-    // which was a number with no derivation sitting in a verifier — exactly the
-    // kind of figure that gets quoted later as though it meant something.
-    const SHIP_GAS_LIMIT = 8_000_000;
-    const WRAPPER_OVERHEAD = 107_556;
-    const WORKING_BUDGET = SHIP_GAS_LIMIT - WRAPPER_OVERHEAD;
-
-    // Headroom is a deliberate 50%, and it is not timidity. Running out of gas
-    // in a validator callback settles NOTHING and reports no error anyone sees.
-    // It covers fit error (the two-point fit under-predicted n=32 by 5.8%),
-    // and mandates that cost more than the ones measured — a revoked mandate
-    // writes an extra event and slot, a failed transfer books a claim.
-    const HEADROOM = 0.5;
-    const binds = Math.floor((WORKING_BUDGET - fixed) / marginal);
-    const want = Math.floor(binds * HEADROOM);
-    const inBody = fixed + marginal * Number(cap);
-    const need = inBody + WRAPPER_OVERHEAD;
-    must(Number(cap) === want,
-      `deployed batchCap is ${cap}, but the fit implies ${want} (binds at ~${binds}, ${HEADROOM * 100}% headroom). ` +
-      `A full batch at ${cap} needs ~${Math.round(need).toLocaleString()} gas against the ${SHIP_GAS_LIMIT.toLocaleString()} limit.`);
-    return `cap ${cap} == fit (${k} points: fixed ~${Math.round(fixed).toLocaleString()} + ` +
-      `~${Math.round(marginal).toLocaleString()}/mandate in-body, +${WRAPPER_OVERHEAD.toLocaleString()} measured wrapper; ` +
-      `binds ~${binds} under ${SHIP_GAS_LIMIT.toLocaleString()}, shipped at ${HEADROOM * 100}%); ` +
-      `a full batch charges ~${Math.round(need).toLocaleString()} gas`;
+    // Computed by scripts/capfit.ts, the SAME module stage3-live.ts uses to set
+    // it. They used to compute it separately and disagreed — stage3 reserved an
+    // undreived "5/6 of the limit" while this used the measured wrapper — so the
+    // on-chain value depended on which script ran last. This check caught that
+    // drift on chain within an hour of being written.
+    const f = capFrom(pts);
+    must(f !== null, "measurement points do not define a line");
+    must(Number(cap) === f!.cap,
+      `deployed batchCap is ${cap}, but the fit implies ${f!.cap} (binds at ~${f!.binds}, ${HEADROOM * 100}% headroom). ` +
+      `A full batch at ${cap} charges ~${Math.round(f!.fixed + f!.marginal * Number(cap) + WRAPPER_OVERHEAD).toLocaleString()} gas against the ${SHIP_GAS_LIMIT.toLocaleString()} limit.`);
+    return `cap ${cap} == fit (${f!.usedPoints} points${f!.excludedFirstEver ? ", first-ever settle excluded" : ""}: ` +
+      `fixed ~${Math.round(f!.fixed).toLocaleString()} + ~${Math.round(f!.marginal).toLocaleString()}/mandate in-body, ` +
+      `+${WRAPPER_OVERHEAD.toLocaleString()} measured wrapper; binds ~${f!.binds} under ${SHIP_GAS_LIMIT.toLocaleString()}, ` +
+      `shipped at ${HEADROOM * 100}%); a full batch charges ~${f!.charges.toLocaleString()} gas`;
   });
 
   await check("skip-cost", async () => {
@@ -725,6 +694,40 @@ async function main() {
       record("PASS", "subscriptions-unwind", `${armers.length} scripts arm a subscription (${armers.join(", ")}); all install unwind and assert stillArmed()`);
     } else {
       record("FAIL", "subscriptions-unwind", `${unguarded.join(", ")} arm a subscription without installUnwind()+stillArmed()`);
+    }
+  }
+
+  // ---- money actually owed to delegators, and not collected --------------
+  //
+  // Settlement books a refund; it does not move collateral. The venue only
+  // returns escrow when someone calls cancelExpiredOrders, and for most of this
+  // build nobody was — totalRefundClaim reached 11.42 tUSDC against a registry
+  // balance of 0. holdsNoFunds() cannot see that: it asserts
+  // balance <= owed + claims, which passes MORE easily the less we hold.
+  //
+  // So this reports the other direction: what is owed to delegators and has not
+  // reached them. Not a failure of the contract — a demo-readiness fact, and
+  // the reason scripts/collect.ts exists.
+  {
+    const rAbi = parseAbi([
+      "function totalRefundClaim() view returns (uint256)",
+      "function totalOwed() view returns (uint256)",
+    ]);
+    const claims = await pub.readContract({ address: REGISTRY, abi: rAbi, functionName: "totalRefundClaim" }) as bigint;
+    const owed = await pub.readContract({ address: REGISTRY, abi: rAbi, functionName: "totalOwed" }) as bigint;
+    const held = await pub.readContract({ address: COLLATERAL, abi: erc20, functionName: "balanceOf", args: [REGISTRY] }) as bigint;
+    const line = `claims ${formatUnits(claims, 6)} · owed ${formatUnits(owed, 6)} · held ${formatUnits(held, 6)} tUSDC`;
+    if (claims === 0n && owed === 0n) {
+      record("PASS", "delegators-paid", `nothing outstanding to any delegator (${line})`);
+    } else if (held >= claims + owed) {
+      record("PASS", "delegators-paid", `outstanding but fully backed — run scripts/collect.ts to push it out (${line})`);
+    } else {
+      // AMBER, not FAIL: the money is recoverable, it just needs the
+      // permissionless collect step. Failing would block a run for something
+      // that is one command away.
+      record("AMBER", "delegators-paid",
+        `${formatUnits(claims + owed - held, 6)} tUSDC is owed to delegators and NOT yet held by the registry — ` +
+        `run scripts/collect.ts (cancelExpiredOrders then sweepRefunds) before recording (${line})`);
     }
   }
 

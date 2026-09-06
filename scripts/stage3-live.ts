@@ -28,6 +28,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { installUnwind, emergencyUnsubscribe, stillArmed, unwindPersistently } from "./unwind.js";
 import { poll } from "./retry.js";
+import { capFrom, fit as fitLine, SHIP_GAS_LIMIT, WRAPPER_OVERHEAD, HEADROOM, type Point } from "./capfit.js";
 import { EC, NETWORK, OrderKind, TOPICS } from "../packages/leash-ec/src/constants.js";
 import { ecClient, discoverMarkets, tradableMarkets } from "../packages/leash-ec/src/discover.js";
 
@@ -54,10 +55,7 @@ const FIT_FILE = ".measurements/deadhand-fit.json";
 //
 // SHIP_GAS_LIMIT is what the cap is sized against; keep the two equal unless
 // deliberately measuring with extra headroom.
-const SUB_GAS_LIMIT = BigInt(process.env.SUB_GAS_LIMIT ?? 8_000_000);
-const SHIP_GAS_LIMIT = BigInt(process.env.SHIP_GAS_LIMIT ?? 8_000_000);
-const WORKING_BUDGET = (SHIP_GAS_LIMIT * 5n) / 6n; // leave the dispatch overhead out
-const HEADROOM = 0.5;
+const SUB_GAS_LIMIT = BigInt(process.env.SUB_GAS_LIMIT ?? SHIP_GAS_LIMIT);
 
 const chain = {
   id: NETWORK.chainId, name: "Somnia Shannon",
@@ -110,17 +108,6 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ---- the fit -------------------------------------------------------------
 
-type Point = {
-  n: number; gas: number; marketId: string; tx: string; codeHash: string; at: string;
-  subGasLimit: string;
-  /**
-   * The first settle a handler ever performs writes its counters zero->nonzero
-   * (20,000 gas each instead of 5,000). Tagged rather than discarded, so the fit
-   * can exclude it and the exclusion is visible.
-   */
-  firstEver: boolean;
-};
-
 function loadPoints(codeHash: string): Point[] {
   if (!existsSync(FIT_FILE)) return [];
   const all = JSON.parse(readFileSync(FIT_FILE, "utf8")) as Point[];
@@ -132,24 +119,16 @@ function loadPoints(codeHash: string): Point[] {
 function savePoint(p: Point): void {
   mkdirSync(".measurements", { recursive: true });
   const all: Point[] = existsSync(FIT_FILE) ? JSON.parse(readFileSync(FIT_FILE, "utf8")) : [];
+  // One transaction is one measurement. A killed run wrote its point anyway,
+  // after the process was believed dead, and the same n=32 settle ended up in
+  // the file twice — harmless here because the duplicate was identical, but it
+  // double-weights that point in the fit and would skew a later one.
+  if (all.some((x) => x.tx === p.tx)) {
+    console.log(`  point for ${p.tx.slice(0, 12)}… already recorded — not duplicating`);
+    return;
+  }
   all.push(p);
   writeFileSync(FIT_FILE, JSON.stringify(all, null, 2));
-}
-
-/** Ordinary least squares. Returns null when the points do not define a line. */
-function fit(points: Point[]): { fixed: number; marginal: number } | null {
-  const ns = new Set(points.map((p) => p.n));
-  if (ns.size < 2) return null;
-  const k = points.length;
-  const sx = points.reduce((a, p) => a + p.n, 0);
-  const sy = points.reduce((a, p) => a + p.gas, 0);
-  const sxx = points.reduce((a, p) => a + p.n * p.n, 0);
-  const sxy = points.reduce((a, p) => a + p.n * p.gas, 0);
-  const denom = k * sxx - sx * sx;
-  if (denom === 0) return null;
-  const marginal = (k * sxy - sx * sy) / denom;
-  const fixed = (sy - marginal * sx) / k;
-  return { fixed, marginal };
 }
 
 async function main() {
@@ -390,26 +369,25 @@ async function main() {
     console.log(`\n  POINT: ${point.gas} gas for ${point.n} mandates   ${NETWORK.explorer}/tx/${point.tx}`);
 
     const all = loadPoints(codeHash);
-    // Exclude the handler's first-ever settle IF there is still a line without
-    // it: its counters went zero->nonzero, which is a one-off 20,000-vs-5,000
-    // difference per slot and not a cost any later batch pays.
-    const warm = all.filter((p) => !p.firstEver);
-    const points = fit(warm) ? warm : all;
-    const line = fit(points);
     console.log(`  points on this bytecode: ${all.map((p) => `n=${p.n}:${p.gas}${p.firstEver ? "(first)" : ""}`).join("  ")}`);
-    if (!line) {
-      console.log(`  ONE BATCH SIZE IS NOT A LINE. ${all.length} point(s) at ${new Set(all.map((p)=>p.n)).size} distinct n.`);
+
+    // The cap comes from scripts/capfit.ts — the SAME module verify.ts asserts
+    // against. They used to compute it separately, this one reserving an
+    // underived "5/6 of the limit" and verify using the measured wrapper
+    // overhead, so the on-chain value depended on which ran last. It drifted on
+    // chain within an hour of the assertion being written.
+    const f = capFrom(all);
+    if (!f) {
+      console.log(`  ONE BATCH SIZE IS NOT A LINE. ${all.length} point(s) at ${new Set(all.map((p) => p.n)).size} distinct n.`);
       console.log(`  batchCap left at ${await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "batchCap" })}, UNBACKED.`);
       console.log(`  Re-run with a different MANDATES= to fit fixed vs marginal cost.`);
     } else {
-      const binds = Math.floor((Number(WORKING_BUDGET) - line.fixed) / line.marginal);
-      const cap = Math.floor(binds * HEADROOM);
-      console.log(`  FIT over ${points.length} points${points === warm && warm.length < all.length ? " (first-ever settle excluded)" : ""}:`);
-      console.log(`    fixed ~${Math.round(line.fixed).toLocaleString()} gas + marginal ~${Math.round(line.marginal).toLocaleString()} gas/mandate`);
-      console.log(`  shipping subscription gasLimit ${SHIP_GAS_LIMIT.toLocaleString()} => working budget ${WORKING_BUDGET.toLocaleString()}`);
-      console.log(`  that budget binds at ~${binds} mandates; shipping ${cap} at ${HEADROOM * 100}% of it`);
-      if (cap < 1) throw new Error(`fit produced a cap of ${cap}: at ${Math.round(line.marginal)} gas/mandate nothing fits under a ${WORKING_BUDGET} budget. Raise SHIP_GAS_LIMIT or cut per-mandate work — do not ship a cap that cannot run.`);
-      const setTx = await wD.writeContract({ address: HANDLER, abi: hndAbi, functionName: "setBatchCap", args: [BigInt(cap)] as never });
+      console.log(`  FIT over ${f.usedPoints} points${f.excludedFirstEver ? " (first-ever settle excluded)" : ""}:`);
+      console.log(`    fixed ~${Math.round(f.fixed).toLocaleString()} + marginal ~${Math.round(f.marginal).toLocaleString()} gas/mandate in-body`);
+      console.log(`    +${WRAPPER_OVERHEAD.toLocaleString()} measured wrapper, against a ${SHIP_GAS_LIMIT.toLocaleString()} gasLimit`);
+      console.log(`  binds at ~${f.binds} mandates; shipping ${f.cap} at ${HEADROOM * 100}% (a full batch charges ~${f.charges.toLocaleString()})`);
+      if (f.cap < 1) throw new Error(`fit produced a cap of ${f.cap}: at ${Math.round(f.marginal)} gas/mandate nothing fits. Raise the gasLimit or cut per-mandate work — do not ship a cap that cannot run.`);
+      const setTx = await wD.writeContract({ address: HANDLER, abi: hndAbi, functionName: "setBatchCap", args: [BigInt(f.cap)] as never });
       await pub.waitForTransactionReceipt({ hash: setTx });
       console.log(`  batchCap = ${await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "batchCap" })}, from a fitted line`);
     }

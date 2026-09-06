@@ -178,5 +178,59 @@
     "revokedByDeadhand": true,
     "sweptToDelegator": null,
     "handlerGas": "945766"
+  },
+  {
+    "n": 11,
+    "at": "2026-09-06T19:40:26.312Z",
+    "marketId": "0x00000000000000000000000000000000000000000000000000000000000154f5",
+    "ok": true,
+    "beats": {
+      "one": "0x619f2ed032fd7a25d009f27d468f6e2431feabb8297d3a23dbfd1f8f70ac81de",
+      "two": "0x220f97505c97ba3dec8052d54a9903d3a2fed2ced1705ba7770634414472a480",
+      "three": "0x3fcd430d0fe500d1157566d45eba43a861dee79cc0db6e41908207cc468fc261"
+    },
+    "failure": null,
+    "detail": "seen=1, 10 invocations, handler gas 945766",
+    "filled": false,
+    "rested": true,
+    "revokedByDeadhand": true,
+    "sweptToDelegator": null,
+    "handlerGas": "945766"
+  },
+  {
+    "n": 12,
+    "at": "2026-09-06T19:45:15.573Z",
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000015501",
+    "ok": true,
+    "beats": {
+      "one": "0xee1204050dea3d6bbd2607c83a8700a6b7526c0e2fb8cc21ccadf3582917aa05",
+      "two": "0x4d197f2aea1918b134354b9aaedb3391f4ae23afc0c1c1269737414798317b84",
+      "three": "0xae0012dfc2ad0432ce967b1ec3ea04866d039373b2809e51e026e9c99ce0032a"
+    },
+    "failure": null,
+    "detail": "seen=1, 10 invocations, handler gas 945766",
+    "filled": false,
+    "rested": true,
+    "revokedByDeadhand": true,
+    "sweptToDelegator": null,
+    "handlerGas": "945766"
+  },
+  {
+    "n": 13,
+    "at": "2026-09-06T19:50:18.653Z",
+    "marketId": "0x000000000000000000000000000000000000000000000000000000000001550d",
+    "ok": true,
+    "beats": {
+      "one": "0x5a4d3f90d29c2a3289e40012c260e455def1ad213dfebfbdc6094ac599d3c07b",
+      "two": "0x25235acf1faef5f80877482d35fca885c97aadefa8a966773301a0dbdd9fbc83",
+      "three": "0x6ec1e89ca0e87f2b89c24b7476aab29e341e7dad020ccf17c9ab71511a47bb7d"
+    },
+    "failure": null,
+    "detail": "seen=1, 10 invocations, handler gas 945766",
+    "filled": false,
+    "rested": true,
+    "revokedByDeadhand": true,
+    "sweptToDelegator": null,
+    "handlerGas": "945766"
   }
 ]
