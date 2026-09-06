@@ -12,7 +12,11 @@
     "demo-reset": "tsx scripts/demo-reset.ts",
     "verify": "tsx scripts/verify.ts",
     "measure-skip": "tsx scripts/measure-skip.ts",
-    "stage3": "tsx scripts/stage3-live.ts"
+    "stage3": "tsx scripts/stage3-live.ts",
+    "ready": "tsx scripts/ready.ts",
+    "collect": "tsx scripts/collect.ts",
+    "disarm": "tsx scripts/unwind-now.ts",
+    "rehearse": "tsx scripts/rehearse.ts"
   },
   "devDependencies": {
     "dotenv": "^16.4.7",

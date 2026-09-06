@@ -17,13 +17,16 @@ import {
   parseAbi, type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { EC, NETWORK, OrderKind } from "../packages/leash-ec/src/constants.js";
+import { EC, NETWORK, OrderKind, TOPICS } from "../packages/leash-ec/src/constants.js";
+import { installUnwind, unwindPersistently } from "./unwind.js";
+import { SHIP_GAS_LIMIT } from "./capfit.js";
 import { ecClient, discoverMarkets, tradableMarketsDetailed } from "../packages/leash-ec/src/discover.js";
 
 const RPC = process.env.EC_RPC_URL ?? "https://api.infra.testnet.somnia.network";
 const REGISTRY = (process.env.MANDATE_REGISTRY ?? "") as Address;
 const HANDLER = (process.env.DEADHAND_HANDLER ?? "") as Address;
 const MANDATES = Number(process.env.MANDATES ?? 8);
+const SUB_GAS_LIMIT = BigInt(SHIP_GAS_LIMIT);
 const STATUS_ONLY = process.argv.includes("--status");
 
 const chain = {
@@ -211,7 +214,39 @@ async function main() {
     console.log(`WARNING: ${placed} seeded exceeds batchCap ${capNow} — beat 3 will settle a PARTIAL batch on camera`);
   }
   console.log(`registry holdsNoFunds() = ${await read<boolean>("holdsNoFunds")}`);
+
+  // ---- arm the subscription, or say plainly that beat 3 will not fire -----
+  //
+  // Seeding is not enough. Without a live subscription the validators never
+  // invoke the handler and beat 3 simply does not happen — which on camera
+  // reads as the Deadhand failing rather than as nobody having turned it on.
+  // There was no command for this before, so it is here.
+  const subNow = await pub.readContract({ address: HANDLER as Address, abi: hndAbi, functionName: "subscriptionId" }) as bigint;
+  if (process.env.ARM === "1" && subNow === 0n) {
+    const ah = await wD.writeContract({
+      address: HANDLER as Address, abi: hndAbi, functionName: "subscribeTo",
+      args: [EC.binaryModule as Address, TOPICS.MarketFinalized as Hex, SUB_GAS_LIMIT, 7_000_000_000n] as never,
+    });
+    await pub.waitForTransactionReceipt({ hash: ah });
+    const sub = await pub.readContract({ address: HANDLER as Address, abi: hndAbi, functionName: "subscriptionId" }) as bigint;
+    if (sub === 0n) throw new Error("subscribeTo mined but subscriptionId is still 0 — beat 3 will NOT fire");
+    console.log(`
+ARMED  subscription ${sub} at gasLimit ${SUB_GAS_LIMIT}`);
+    console.log(`       ~0.0017 STT per finalization while armed. DISARM AFTER THE TAKE.`);
+  } else if (subNow !== 0n) {
+    console.log(`
+already armed: subscription ${subNow}`);
+  } else {
+    console.log(`
+NOT ARMED — beat 3 will not fire. Re-run with ARM=1 to subscribe.`);
+  }
+
   console.log(`\nready. ${placed} mandates will settle together when this market resolves.\n`);
 }
 
-main().then(() => process.exit(0)).catch((e) => { console.error(e); process.exit(1); });
+// Arming spends on every finalization, so Ctrl-C must disarm rather than walk
+// away from it. A crashed run once left one armed across 400 invocations.
+installUnwind();
+main()
+  .then(() => process.exit(0))
+  .catch(async (e) => { console.error(e); await unwindPersistently(); process.exit(1); });
