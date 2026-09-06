@@ -133,7 +133,33 @@ async function main() {
   const r = await tradableMarketsDetailed(disc, found, { headroomSec: 120n, limit: 3, maxChecks: 20 });
   console.log(`discovery: ${found.length} created, ${r.checked} checked, ${r.errors} errors, ${r.live.length} tradable`);
   if (r.live.length === 0) throw new Error("no tradable market — cannot seed");
-  const mk = r.live[0]!;
+
+  // NEVER SEED ONTO A MARKET THAT ALREADY CARRIES RESERVATIONS.
+  //
+  // Retiring mandates above does NOT close their reservations — only settleOne
+  // does, and that needs the market resolved. So a market that inherited
+  // reservations from an abandoned run cannot be cleaned; it can only be
+  // avoided.
+  //
+  // This is the failure it prevents, and it has already happened once: leftover
+  // reservations from an earlier run inflate `pending`, the batch clips at the
+  // cap, and beat 3 shows a PARTIAL settle instead of the whole set landing
+  // together. On camera that reads as the Deadhand not working. The gap between
+  // the set we seed and the cap is only a few stale reservations wide.
+  let mk: typeof r.live[number] | undefined;
+  const dirty: string[] = [];
+  for (const cand of r.live) {
+    const pend = await read<bigint>("pendingSettlement", [cand.marketId]);
+    if (pend === 0n) { mk = cand; break; }
+    dirty.push(`${cand.marketId.slice(0, 12)}…:${pend}`);
+  }
+  if (!mk) {
+    throw new Error(
+      `every tradable market already carries open reservations (${dirty.join(", ")}). ` +
+      "They cannot be drained until those markets resolve — wait for the next window rather than seeding on top of them.",
+    );
+  }
+  if (dirty.length) console.log(`skipped ${dirty.length} market(s) carrying stale reservations: ${dirty.join(", ")}`);
   const ttl = Number(mk.expiry) - Math.floor(Date.now() / 1000);
   console.log(`seeding on ${mk.asset}, ttl ${ttl}s, marketId ${mk.marketId.slice(0, 18)}...`);
 
@@ -168,7 +194,22 @@ async function main() {
     } catch (e) { console.log(`  mandate ${id} order failed: ${(e as Error).message.split(String.fromCharCode(10))[0]}`); }
   }
   console.log(`placed ${placed}/${ids.length} resting orders`);
-  console.log(`pending settlement on the market: ${await read<bigint>("pendingSettlement", [mk.marketId])}`);
+
+  // ASSERT the state we built, rather than printing it and hoping someone
+  // reads the number. We started this market at zero pending and placed
+  // `placed` orders, so pending must be exactly `placed`.
+  const pendAfter = await read<bigint>("pendingSettlement", [mk.marketId]);
+  if (pendAfter !== BigInt(placed)) {
+    throw new Error(
+      `expected ${placed} open reservations on this market, found ${pendAfter}. ` +
+      "State arrived from somewhere it was not put; do not rehearse against it.",
+    );
+  }
+  console.log(`pending settlement on the market: ${pendAfter} (matches the ${placed} seeded)`);
+  const capNow = await pub.readContract({ address: HANDLER as Address, abi: hndAbi, functionName: "batchCap" }) as bigint;
+  if (BigInt(placed) > capNow) {
+    console.log(`WARNING: ${placed} seeded exceeds batchCap ${capNow} — beat 3 will settle a PARTIAL batch on camera`);
+  }
   console.log(`registry holdsNoFunds() = ${await read<boolean>("holdsNoFunds")}`);
   console.log(`\nready. ${placed} mandates will settle together when this market resolves.\n`);
 }

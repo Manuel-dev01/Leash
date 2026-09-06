@@ -389,5 +389,25 @@
       "firstResult": "Two runs, 5 Sep: seen[marketId] == 1 both times and both settled. Neither branch fired. That does not retire H1 - it means the instrumentation now answers the question the next time it happens, which is the point.",
       "note": "The two were indistinguishable precisely because the emit that separated them had been trimmed for gas."
     }
+  ],
+  "knownLimitations": [
+    {
+      "id": "sweep-ignores-refund-claims",
+      "severity": "HIGH in a multi-delegator deployment; not triggered in this build's own runs",
+      "what": "MandateRegistry._sweep keeps only `totalOwed`, not `totalOwed + totalRefundClaim`. Collateral that has been booked as delegator A's refundClaim can therefore be swept to delegator B by B's next placeForDelegator, because _sweep sends `balance - totalOwed` to whichever delegator's order is executing.",
+      "observed": "Directly: 1.98 tUSDC returned to the registry from cancelExpiredOrders, then vanished while refundClaim still read 1.98. Re-run with nothing racing it, the correct path paid the delegator in full and cleared the claim.",
+      "whyTheInvariantStillPasses": "holdsNoFunds() asserts balance <= totalOwed + totalRefundClaim. Sweeping money OUT only lowers the balance, so the invariant holds — vacuously. It proves we hold nothing unattributed; it does not prove every attributed claim is backed by collateral we still hold. That is a second invariant this contract does not assert.",
+      "blastRadius": "Requires A's escrow to be sitting in the registry when B places an order. Escrow only arrives when someone explicitly calls cancelExpiredOrders or redeem on the venue, so the window is narrow in practice and did not occur across the rehearsal set, where every mandate shares one delegator.",
+      "fix": "One line: `uint256 keep = totalOwed + totalRefundClaim;`. The contract is IMMUTABLE by design, so applying it means redeploying the registry AND the handler (its `registry` pointer is immutable), which invalidates every evidence hash and the batch-cap fit's code hash.",
+      "status": "DISCLOSED, NOT FIXED. Recorded rather than quietly left in place."
+    },
+    {
+      "id": "escrow-return-is-not-automatic",
+      "severity": "affects the demo narrative, not custody",
+      "what": "Settlement releases exposure and books a refundClaim, but the venue does not push the collateral back. Someone must call cancelExpiredOrders (or redeem) on the pool first; sweepRefunds then pays the delegator.",
+      "observed": "totalRefundClaim reached 11.42 tUSDC with a registry balance of 0 across the measurement and rehearsal runs.",
+      "mitigation": "Both legs are PERMISSIONLESS and were both executed from a stranger key, so the delegator never depends on us being online. The handler does not do it in-callback.",
+      "consequence": "Beat 3's in-block action is settle + revoke + book. The payout is a second, permissionless step. Do not narrate it as money moving in the same block."
+    }
   ]
 }

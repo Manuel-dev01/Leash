@@ -1,0 +1,128 @@
+[
+  {
+    "n": 1,
+    "at": "2026-09-06T18:50:06.527Z",
+    "marketId": "0x000000000000000000000000000000000000000000000000000000000001547b",
+    "ok": true,
+    "beats": {
+      "one": "0xed1868a5b22d4b6ec1f345f66eee49f61d4d202fdcbbde237f4a02251698087e",
+      "two": "0xba7d0af5d6a5befd3f4f6a36938c0c72105dda54abde03505e5bf4b0fcabea39",
+      "three": "0xdb795747fa69736c63cbb81f70332872dcad50175f210c12d3cfc31397d41088"
+    },
+    "failure": null,
+    "detail": "seen=1, 10 invocations, handler gas 945766",
+    "filled": false,
+    "rested": true,
+    "revokedByDeadhand": true,
+    "sweptToDelegator": null,
+    "handlerGas": "945766"
+  },
+  {
+    "n": 2,
+    "at": "2026-09-06T18:55:09.654Z",
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000015487",
+    "ok": true,
+    "beats": {
+      "one": "0x62feda616269748c4e46196c7170fe3ded8a69de623f285ae80eabd5183e158c",
+      "two": "0x127c1dfb4521ec2a8aaff4ed0be98a5de0be656073203622cf479ea2a0d0e655",
+      "three": "0xb394fbe083a44984eb13c8c7c1ddc74aeaffac08f455a433a52b231eb04acf36"
+    },
+    "failure": null,
+    "detail": "seen=1, 14 invocations, handler gas 945766",
+    "filled": false,
+    "rested": true,
+    "revokedByDeadhand": true,
+    "sweptToDelegator": null,
+    "handlerGas": "945766"
+  },
+  {
+    "n": 3,
+    "at": "2026-09-06T19:00:10.359Z",
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000015493",
+    "ok": true,
+    "beats": {
+      "one": "0x1b61a4e2ad22f0a4e224f1771407acfdadf361c92e524c41ed2f046f5a6535b7",
+      "two": "0xf913e5386fd3c4ba2ee8cf6e75a39c15c462ff81f114b470a0ba1e2e1ef7b247",
+      "three": "0x5327d5db9aa4444a4097516d1645b22da9b140f7f59da4bb231463f8624e8cd0"
+    },
+    "failure": null,
+    "detail": "seen=1, 12 invocations, handler gas 945766",
+    "filled": false,
+    "rested": true,
+    "revokedByDeadhand": true,
+    "sweptToDelegator": null,
+    "handlerGas": "945766"
+  },
+  {
+    "n": 4,
+    "at": "2026-09-06T19:05:12.810Z",
+    "marketId": "0x00000000000000000000000000000000000000000000000000000000000154a1",
+    "ok": true,
+    "beats": {
+      "one": "0x62c68426fe3a74a65b00c59e010f07567b3517d353a21e4f71459fa52e1d919e",
+      "two": "0x7d6c2dda182b7496ae06fcda64cfe770d4a13cb14cd12388d61b5ad06813950d",
+      "three": "0x3b97cf2e6f24c9b6985b4aa45dc4168b97ddf88a80f834e392acc165e3b61ed6"
+    },
+    "failure": null,
+    "detail": "seen=1, 12 invocations, handler gas 945766",
+    "filled": false,
+    "rested": true,
+    "revokedByDeadhand": true,
+    "sweptToDelegator": null,
+    "handlerGas": "945766"
+  },
+  {
+    "n": 5,
+    "at": "2026-09-06T19:10:38.494Z",
+    "marketId": "0x00000000000000000000000000000000000000000000000000000000000154ad",
+    "ok": true,
+    "beats": {
+      "one": "0x3145e276d559632b7f954385f0489761a8cfaa7edc91682024a770cd32de30ce",
+      "two": "0x551114563f0a3b2621ef9f6b1e4ab563c331cb740adbfcda73b79704019f2bef",
+      "three": "0x1c97c1ee39901c66460e9600b815158945811745ba3b8e66f04b64f8196f5f3f"
+    },
+    "failure": null,
+    "detail": "seen=1, 8 invocations, handler gas 945766",
+    "filled": false,
+    "rested": true,
+    "revokedByDeadhand": true,
+    "sweptToDelegator": null,
+    "handlerGas": "945766"
+  },
+  {
+    "n": 6,
+    "at": "2026-09-06T19:15:09.475Z",
+    "marketId": "0x00000000000000000000000000000000000000000000000000000000000154b9",
+    "ok": true,
+    "beats": {
+      "one": "0x258fecd8481ea9ac09c9bf7d8d34e40628605281fd6e3174435ef5c61b784001",
+      "two": "0xfb90148a4782363827c609ff045efb4c71d4949e8c5acebd187ac336c6326a37",
+      "three": "0x5f37350eb973caf67c5397079d41621d3577b9d465698981aab0ba229e079c80"
+    },
+    "failure": null,
+    "detail": "seen=1, 12 invocations, handler gas 1028680",
+    "filled": false,
+    "rested": true,
+    "revokedByDeadhand": true,
+    "sweptToDelegator": null,
+    "handlerGas": "1028680"
+  },
+  {
+    "n": 7,
+    "at": "2026-09-06T19:20:23.209Z",
+    "marketId": "0x00000000000000000000000000000000000000000000000000000000000154c5",
+    "ok": true,
+    "beats": {
+      "one": "0xdddda4fd735834b864e07496c55f68190d6e0994197d87d5d3fbda162d5c53f2",
+      "two": "0x04a61686e0001f88a9fb10ee3451fcd9d72d72ea9a95a1a38299453b31db0ae4",
+      "three": "0x7e503e755e4427095689c9783a859a0de45d785bbed368f716fd1eeafad7e6a6"
+    },
+    "failure": null,
+    "detail": "seen=1, 10 invocations, handler gas 945766",
+    "filled": false,
+    "rested": true,
+    "revokedByDeadhand": true,
+    "sweptToDelegator": null,
+    "handlerGas": "945766"
+  }
+]
