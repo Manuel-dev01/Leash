@@ -222,3 +222,58 @@ already `invocations − marketsSettled`.
 `seen == 1` and both settled. That is not evidence the bug is gone; it is
 evidence the instrument works. It must not be reclassified as "probably fine" on
 the strength of runs that happened to work.
+
+---
+
+## Failure classes this build keeps producing
+
+Recorded as classes rather than incidents, because each was found three or four
+times in different clothes before the pattern was named.
+
+### A process you believe is dead can still write
+
+- A crashed poll loop left a subscription **armed** for 400 unattended
+  invocations.
+- An RPC timeout killed a 50-minute run **and** broke the unwind that was
+  supposed to clean up after it — one attempt, same unresponsive endpoint.
+- A run stopped with `TaskStop` finished its poll anyway: it **set the batch cap
+  from a superseded formula** and wrote its measurement point a second time. The
+  cap read 13 an hour after being set to 15, on chain, with no process visibly
+  running.
+
+**What it costs:** chain state that disagrees with the repository, written by
+something nobody is watching, discovered only if something asserts it.
+
+**What actually helps:** assertions that read the chain back (`stillArmed()`,
+the batch-cap equality check), idempotent writes (`savePoint` refuses a
+duplicate transaction hash), and never trusting a mined transaction to mean the
+thing happened. Killing a process is a request, not a guarantee.
+
+### A verifier can check the paperwork instead of the conclusion
+
+Distinct from the rule-6 class, and it lives specifically in verification code:
+the check asserts that the *ingredients* are present rather than that the
+*conclusion* follows.
+
+- `batch-cap` asserted two measurement points existed but never that the
+  deployed cap followed from them — so it passed green with a cap the fit
+  contradicted, twice.
+- `skip-cost` asserted the claim's provenance *label* matched the current build.
+  Any number written into `claims.json` with the right code hash would have
+  passed. It never looked at a receipt.
+- `validators-settle-a-batch-in-block` asserted `marketsSettled > 0`. The claim
+  names batch sizes; "at least one settle happened" does not check them.
+- `no-eoa-authorization-surface` was the extreme case: it computed a selector
+  and **returned unconditionally**. It could not fail, on the finding the entire
+  product rests on.
+
+**The question to ask every check:** *if the claim were false, would this
+still pass?* All four would have. They now read receipts, decode raw revert
+data, and compare the shipped value against what the evidence implies.
+
+**A sub-lesson.** Making `no-eoa-authorization-surface` real exposed a second
+bug inside it: a hand-written signature hashed to `0x275284bb` when the real
+selector is `0x5d97c566`, so the call hit the fallback and reverted with **no
+return data** — which the first version accepted as a pass. A check that accepts
+"it reverted somehow" is barely a check. It now requires the exact selector, and
+takes its ABI from the SDK rather than from a signature typed by hand.

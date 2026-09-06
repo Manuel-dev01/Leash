@@ -13,22 +13,37 @@ what the rehearsals actually produced, not what we hoped they would.
 ## Before you record
 
 ```bash
-npx tsx scripts/verify.ts        # 33 checks, must be all green. If red, do not record.
-npx tsx scripts/demo-reset.ts    # clean state, seeded mandates, one market
-npx tsx scripts/collect.ts       # drain any outstanding refund claims first
+npm run ready                    # GO / WAIT / STOP — read-only, run it as often as you like
+npm run collect                  # push refunds out to delegators (WINDOWS=220 for a backlog)
+npx tsx scripts/verify.ts        # 34 checks. If anything is red, do not record.
+ARM=1 npm run demo-reset         # seed AND subscribe — beat 3 does not fire unarmed
+#   ... record ...
+npm run disarm                   # ALWAYS. ~15 STT/day while armed.
 ```
 
-`demo-reset` now **refuses** to seed onto a market that already carries open
-reservations. That is not fussiness: leftover reservations from a previous take
-inflate `pending`, the batch clips at the cap, and beat 3 shows a *partial*
-settle on camera — which reads as the Deadhand not working.
+**`npm run ready` is the one that decides.** It reports the market series and
+ttl, pending reservations on the candidate market, subscription state, the
+handler against the 32 STT floor, the custody invariant, and every wallet
+balance — then prints GO, WAIT or STOP. Stage 5 is why it exists: three runs in
+twenty failed because the market the demo needs did not exist, and on one of
+them the short series was **entirely absent**. Do not set up into that.
 
-**Timing constraint, measured.** The venue runs **six live markets at a time**:
-BTC and ETH, in a 60s, a 300s and a 3600s window. The 300s series is the only
-one that gives a full three-beat cycle in minutes, and setup takes ~50s, so it
-is usable only in roughly the **first half of its five-minute life**. If
-`verify.ts` reports "no tradable market", that is the venue, not us — wait for
-the next window.
+**`ARM=1` is not optional.** Seeding does not subscribe, and without a
+subscription validators never invoke the handler — beat 3 simply does not
+happen, which on camera reads as the Deadhand failing rather than as nobody
+having switched it on.
+
+**On stale reservations:** `demo-reset` does **not** clear pending reservations,
+and cannot — only `settleOne` closes one and that needs the market resolved. It
+**refuses** a market carrying any, and asserts `pending == placed` after seeding.
+Avoidance, not cleanup. A crashed run once left 20 stale reservations and the
+next batch clipped at the cap, showing a partial settle.
+
+**Timing, measured.** The venue runs **six live markets at a time** — BTC and
+ETH, in a 60s, a 300s and a 3600s window. The 300s series is the only one giving
+a full three-beat cycle in minutes, and setup takes ~50s, so it is usable in
+roughly the first half of its five-minute life. `ready` tells you how long until
+the next usable window.
 
 ---
 
