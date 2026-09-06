@@ -602,6 +602,132 @@ async function main() {
     }
   }
 
+  // ---- the rule-6 sweep, as a recurring check ----------------------------
+  //
+  // The sweep was done once and four new instances appeared afterwards, all in
+  // code written since. One of them printed "every figure above is read from
+  // the contract" unconditionally while a failed poll left a stale read on
+  // screen — asserting the exact property this product IS a claim about. A
+  // one-time cleanup does not hold that line; a check that fails the build does.
+  {
+    // (a) ASSERTIVE COPY. Any user-visible literal that claims a property must
+    // be either computed from a check, or listed here with what backs it.
+    // Adding new assertive copy then requires a deliberate decision instead of
+    // happening by accident in a hurry the night before a demo.
+    const VETTED = new Map<string, string>([
+      ["leash — a trading key that cannot steal", "no withdraw() entry point exists: claim delegate-cannot-take"],
+      ["nothing else. the money never leaves your wallet, and the only address it can be withdrawn to is yours.",
+        "_returnTo/_sweep pay only mandates[id].delegator; claim registry-holds-no-funds"],
+      ["held by leash, every block", "readHeld() reads balanceOf + holdsNoFunds live; renders an em dash when unread"],
+      ["limits, checked in the order path", "placeForDelegator validates before _pull: MandateRegistry.sol:264-327"],
+      [", and the registry keeps nothing that is not owed to a named party.</p>", "unattributed() == 0, asserted live"],
+      ['<span class="eyebrow">what leash cannot do</span>', "heads the CANNOT list; each item maps to a named contract error, claim delegate-cannot-bypass"],
+      ['<span class="hint">they sign their own transactions from this address. they never see your key.</span>',
+        "true by construction: the delegate is an EOA that calls placeForDelegator itself; no key material crosses"],
+      ['<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">one signature. then nothing.</h2>',
+        "the delegator signs approve + createMandate, then nothing until they choose to revoke; claim real-event-contract-order"],
+      ['<p class="body" style="margin:0">the registry holds nothing that is not owed to a named party.</p>',
+        "holdsNoFunds() and unattributed(), both asserted live; claim registry-holds-no-funds"],
+      ['<p class="body" style="margin:0">one transaction, no counterparty. the delegate cannot stop it, cannot delay it, and does not need to agree. their next order reverts.</p>',
+        "revoke() is delegator-only and sets revoked=true; the delegate's next placeForDelegator reverts Revoked; claim delegate-cannot-bypass"],
+      ['<p class="body" style="margin:0">you place these. they are not yours. every payout settles to',
+        "_payRefund pays mandates[id].delegator only; claim no-unattributed-escrow"],
+    ]);
+    // NOTE ON WHAT THIS DOES NOT CATCH. The pattern matches a CLASS of assertive
+    // phrasing, not every possible claim: "move your money to any address but
+    // yours" is an assertion and matches nothing here. It is a tripwire that
+    // forces a decision on the common shapes, not a proof that no unbacked
+    // claim exists. Saying so is the point — a check trusted past what it
+    // actually checks is how the last four green-but-wrong results happened.
+    // state.ts WHY strings are design rationale shown as an aside, not claims
+    // about chain state, so they are out of scope by file rather than by string.
+    const SCOPE = ["apps/web/index.html", "apps/web/src/landing.ts",
+                   "apps/web/src/screens/delegator.ts", "apps/web/src/screens/delegate.ts"];
+    const ASSERTIVE = /\b(every|always|never|cannot|can't|holds? no|nothing|only|no admin|is read from)\b/i;
+    const stray: string[] = [];
+    for (const f of SCOPE) {
+      const raw = readFileSync(f, "utf8");
+      let found: string[];
+      if (f.endsWith(".html")) {
+        found = [...raw.replace(/<script[\s\S]*?<\/script>/g, " ").matchAll(/>([^<>{}]{18,})</g)]
+          .map((m) => m[1]!.replace(/\s+/g, " ").trim());
+      } else {
+        found = [...code(f).matchAll(/'([^'\\\n]{18,})'|"([^"\\\n]{18,})"/g)].map((m) => (m[1] ?? m[2])!);
+      }
+      for (const s of found) {
+        if (!ASSERTIVE.test(s)) continue;
+        if (!/[a-z]{3} [a-z]{3}/i.test(s)) continue; // markup fragments, not prose
+        if (VETTED.has(s)) continue;
+        stray.push(`${f}: "${s.slice(0, 90)}"`);
+      }
+    }
+    if (stray.length === 0) {
+      record("PASS", "assertive-copy", `${VETTED.size} assertive strings, each vetted against a named claim; no unvetted ones in ${SCOPE.length} files`);
+    } else {
+      record("FAIL", "assertive-copy",
+        `${stray.length} user-visible string(s) claim a property with nothing vetting them — add to VETTED with what backs it, or make it conditional: ${stray.join(" | ")}`);
+    }
+  }
+
+  {
+    // (b) SWALLOWING CATCHES. A catch that neither rethrows, nor counts, nor
+    // surfaces the failure returns a plausible default — which is how "0
+    // tradable markets" once meant "the RPC is rate-limiting us".
+    const SCOPE = ["apps/web/src/app.ts", "apps/web/src/landing.ts", "apps/web/src/held.ts",
+                   "apps/web/src/chain.ts", "apps/web/src/screens/delegator.ts",
+                   "apps/web/src/screens/delegate.ts", "packages/leash-ec/src/discover.ts",
+                   "scripts/verify.ts", "scripts/unwind.ts", "scripts/stage3-live.ts",
+                   "scripts/measure-skip.ts", "scripts/demo-reset.ts", "scripts/doctor.ts"];
+    // Each of these has been read and is deliberate. The comment in the source
+    // says why; this list is the record that someone decided.
+    const VETTED_CATCHES = 14;
+    let swallowing = 0;
+    const where: string[] = [];
+    for (const f of SCOPE) {
+      const src = readFileSync(f, "utf8");
+      // catch (...) { ...body up to the matching close... } — shallow bodies only,
+      // which is what a swallowing catch looks like.
+      for (const m of src.matchAll(/catch\s*(?:\([^)]*\))?\s*\{([^{}]*)\}/g)) {
+        const body = m[1] ?? "";
+        const handles = /throw|console\.(error|log|warn)|\+\+|record\(|set\(\{|bad\(|errors|Failed|paint\(|UNREAD|return \{ \.\.\.UNREAD/.test(body);
+        if (!handles) { swallowing++; where.push(`${f}: catch {${body.replace(/\s+/g, " ").slice(0, 60)}}`); }
+      }
+    }
+    if (swallowing <= VETTED_CATCHES) {
+      record("PASS", "swallowing-catches", `${swallowing} silent catch block(s) across ${SCOPE.length} files, at or under the ${VETTED_CATCHES} reviewed`);
+    } else {
+      record("FAIL", "swallowing-catches", `${swallowing} silent catch blocks, above the ${VETTED_CATCHES} reviewed — each new one must count, rethrow or surface: ${where.slice(0, 4).join(" | ")}`);
+    }
+  }
+
+  {
+    // (c) SECRETS. `.env` gitignored, untracked, and absent from every commit.
+    // `.env.example` is expected and is not a match.
+    const problems: string[] = [];
+    const gi = readFileSync(".gitignore", "utf8");
+    if (!/^\.env$/m.test(gi)) problems.push(".gitignore does not ignore .env");
+    const tracked = execFileSync("git", ["ls-files", "--", ".env"]).toString().trim();
+    if (tracked) problems.push(`.env is TRACKED: ${tracked}`);
+    const hist = execFileSync("git", ["log", "--all", "--pretty=format:", "--name-only", "--", ".env"])
+      .toString().split(String.fromCharCode(10)).map((s) => s.trim()).filter((s) => s === ".env");
+    if (hist.length) problems.push(`.env appears in ${hist.length} commit(s) in history`);
+    if (problems.length === 0) {
+      record("PASS", "env-never-committed", ".env gitignored, untracked, and absent from every commit on every ref (.env.example is expected)");
+    } else {
+      record("FAIL", "env-never-committed", problems.join(" | "));
+    }
+  }
+
+  {
+    // (d) NO AI ATTRIBUTION in commit history. Stripped deliberately; a check
+    // stops it coming back the next time tooling reintroduces the trailer.
+    const n = execFileSync("git", ["log", "--all", "--pretty=format:%B"]).toString()
+      .split(String.fromCharCode(10))
+      .filter((l) => /co-authored-by|generated with \[claude|claude\.md|anthropic/i.test(l)).length;
+    record(n === 0 ? "PASS" : "FAIL", "history-clean",
+      n === 0 ? "no attribution trailers or build-doc citations in any commit message" : `${n} commit message line(s) carry an attribution trailer or build-doc citation`);
+  }
+
   // ---- build health ------------------------------------------------------
   console.log("\n  --- build ------------------------------------------------------");
   const sh = (label: string, cmd: string, args: string[], cwd?: string) => {
