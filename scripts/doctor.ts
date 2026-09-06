@@ -32,17 +32,33 @@ async function logsByTopic(
   fromBlock: bigint,
   toBlock: bigint,
   address?: Address,
-): Promise<{ address: string }[]> {
+): Promise<{ address: string; topics: string[] }[]> {
   const params: Record<string, unknown> = {
     fromBlock: `0x${fromBlock.toString(16)}`,
     toBlock: `0x${toBlock.toString(16)}`,
     topics: [topic0],
   };
   if (address) params.address = address;
-  return (await client.request({
+  const raw = (await client.request({
     method: "eth_getLogs",
     params: [params],
-  } as unknown as Parameters<typeof client.request>[0])) as unknown as { address: string }[];
+  } as unknown as Parameters<typeof client.request>[0])) as unknown as {
+    address: string; topics: string[];
+  }[];
+
+  // THIS RPC DOES NOT HONOUR THE topic0 FILTER. Verified with the probe
+  // pattern: identical call, one variable changed — a request for a topic0
+  // matching nothing came back with 3 logs carrying a different topic0, over
+  // the same block range that returned 3 for the correct hash.
+  //
+  // So the `topics` param above is a hint the server is free to ignore, and
+  // every count derived from it was inflated by every other event in range.
+  // Filtering here is not belt-and-braces; it is the only filtering there is.
+  //
+  // viem's `getLogs({ event })` is unaffected because it re-filters client-side
+  // in strict mode, which is why chain-only discovery was never wrong. Raw
+  // `client.request` has no such protection.
+  return raw.filter((l) => l.topics?.[0]?.toLowerCase() === topic0.toLowerCase());
 }
 
 let failures = 0;
