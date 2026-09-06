@@ -45,6 +45,7 @@ const pub = createPublicClient({ chain, transport: http(RPC) });
 
 const regAbi = parseAbi([
   "function sweepRefunds(uint256)",
+  "function nextMandateId() view returns (uint256)",
   "function refundClaim(uint256) view returns (uint256)",
   "function totalRefundClaim() view returns (uint256)",
   "function mandates(uint256) view returns (address delegator, address delegate, uint128 maxStakePerTrade, uint128 maxCumulativeExposure, uint128 usedExposure, uint64 expiry, bool revoked, bool exists)",
@@ -117,6 +118,15 @@ async function main() {
   console.log(`\n  registry collateral ${formatUnits(before, 6)} -> ${formatUnits(afterCancel, 6)} (+${formatUnits(afterCancel - before, 6)})`);
 
   // ---- leg 2: pay the delegators, immediately -----------------------------
+  //
+  // Enumerated by mandate id, NOT from the logs above. A log scan only reaches
+  // back as far as its window, so mandates whose orders were placed earlier
+  // keep an unpaid claim forever while the collateral sits in the registry —
+  // where the _sweep flaw can hand it to a different delegator. Claims are
+  // cheap to read and there are not many mandates; read them all.
+  const next = await pub.readContract({ address: REGISTRY, abi: regAbi, functionName: "nextMandateId" }) as bigint;
+  for (let i = 1n; i < next; i++) mandateIds.add(i);
+
   let paid = 0n, swept = 0;
   for (const id of [...mandateIds].sort((a, b) => (a < b ? -1 : 1))) {
     const claim = await pub.readContract({ address: REGISTRY, abi: regAbi, functionName: "refundClaim", args: [id] }) as bigint;
