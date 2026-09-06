@@ -232,5 +232,23 @@
     "revokedByDeadhand": true,
     "sweptToDelegator": null,
     "handlerGas": "945766"
+  },
+  {
+    "n": 14,
+    "at": "2026-09-06T19:55:24.801Z",
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000015519",
+    "ok": true,
+    "beats": {
+      "one": "0x3fa55a23a8fa20f317bc51aff6c4f0fefe25e77c84f101d2f87ab1b418119ba5",
+      "two": "0x90726a115261bdc67c164d04114764c1d11e93b612ef9ac99ac8b8a37de2b5f1",
+      "three": "0xfbd239109f0e311aa96ea50d77bc3df1c640cc5d011269642a3e0cac67a12d9a"
+    },
+    "failure": null,
+    "detail": "seen=1, 12 invocations, handler gas 945766",
+    "filled": true,
+    "rested": true,
+    "revokedByDeadhand": true,
+    "sweptToDelegator": null,
+    "handlerGas": "945766"
   }
 ]

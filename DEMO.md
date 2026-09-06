@@ -138,20 +138,20 @@ against it on the binary path and it looks like success.
 
 | | |
 |---|---|
-| Runs completed | 10 of 20 at time of writing |
-| Full three-beat passes | **10 / 10** |
-| Beat 1 reverted on chain | 10 / 10 |
-| Beat 2 accepted by the venue | 10 / 10 |
-| Beat 2 **filled** | **0 / 10** — see above |
-| Beat 3 settled and revoked | 10 / 10 |
+| Runs completed | 14 of 20 at time of writing |
+| Full three-beat passes | **14 / 14** |
+| Beat 1 reverted on chain | 14 / 14 |
+| Beat 2 accepted by the venue | 14 / 14 |
+| Beat 2 **filled** | **1 / 14** — possible, not scriptable |
+| Beat 3 settled and revoked | 14 / 14 |
 | `seen[marketId]` after settle | `1`, every run — H1 has not recurred |
 | Silent rejections | **0** |
 | Handler gas per invocation | 945,766 – 1,028,680 (2-mandate batches) |
 
 ### What the rehearsals changed
 
-- **Beat 2's wording.** It was written as "an order that fills". Ten runs and a
-  venue-wide measurement say otherwise.
+- **Beat 2's wording.** It was written as "an order that fills". Fourteen runs
+  produced exactly one fill, and a venue-wide measurement explains why.
 - **Beat 3's payout leg was never running.** Settlement books a refund; the
   venue does not push collateral back until someone calls
   `cancelExpiredOrders`. Nobody was, so `totalRefundClaim` had reached 11.42

@@ -188,7 +188,8 @@
         "evidence": [
           "0xd9162752036bb1c08fd85556066b599ec5960df58efafd46582030d8889b57e9",
           "0x5a4d63b79075ebf0d6ad5f7bdb106013ae483d75f112259518fb774d6726f672",
-          "0x8f389e54f85f32bf6b14364f9a3b6f40c1803874ca7a2719c2a1beb60e5d0356"
+          "0x8f389e54f85f32bf6b14364f9a3b6f40c1803874ca7a2719c2a1beb60e5d0356",
+          "0xdb795747fa69736c63cbb81f70332872dcad50175f210c12d3cfc31397d41088"
         ]
       },
       "history": "The previous evidence was on a superseded handler deployment whose marketsSettled counter reads 0 — i.e. it never settled anything at this address. Re-proven on the current build.",
@@ -320,7 +321,7 @@
     },
     {
       "id": "real-event-contract-order",
-      "claim": "The delegate places a real Event Contract order that fills, drawing on an allowance the delegator can revoke at any moment. The principal never leaves the delegator's wallet.",
+      "claim": "The delegate places a real Event Contract order that the venue accepts, drawing on an allowance the delegator can revoke at any moment. The principal is pulled just-in-time and swept back in the same transaction; the delegator has signed nothing but an ERC-20 approve.",
       "appearsIn": [
         "README",
         "demo:beat2",
@@ -328,16 +329,17 @@
       ],
       "status": "LIVE-PROVEN",
       "proof": {
-        "assertion": "A BinaryOrderPlaced log in the receipt of a placeForDelegator transaction sent by the delegate key, with the delegator having signed only an ERC-20 approve.",
-        "runsAgainst": "a live dreamDEX binary pool on Somnia Shannon",
+        "assertion": "BinaryOrderPlaced in the receipt of a placeForDelegator transaction sent by the delegate key, with the order id read from topics[1] of that log.",
+        "runsAgainst": "live dreamDEX binary pools on Somnia Shannon, 14 rehearsal runs",
         "evidence": [
-          "0xbe4b6bdb"
+          "0xba7d0af5d6a5befd3f4f6a36938c0c72105dda54abde03505e5bf4b0fcabea39",
+          "0x90726a115261bdc67c164d04114764c1d11e93b612ef9ac99ac8b8a37de2b5f1"
         ]
       },
-      "caveat": "The order path is guarded by simulate -> abort on success==false -> assert BinaryOrderPlaced -> read the id FROM THE RECEIPT. ec-core does not do this, and a mined transaction can be a silent rejection.",
+      "caveat": "A FILL IS NOT PROMISED and must not be scripted. Binary books are quote-only: 161 orders on binary pools produced 1 fill in ~100s, while 35 fills happened on spot/perp in the same window. Across 14 rehearsals, 1 filled and 13 rested. The second evidence hash is the one that filled; the first is the ordinary case. Beat 2 proves the authorization and just-in-time custody path, which is ours, not the presence of a counterparty, which is not.",
       "provenance": {
-        "commit": "3bdae03",
-        "block": "24 Aug 2026"
+        "commit": "HEAD",
+        "runs": "14 rehearsals, .measurements/rehearsals.json"
       }
     },
     {
@@ -350,9 +352,12 @@
       ],
       "status": "LIVE-ASSERTED",
       "proof": {
-        "assertion": "The registry exposes no withdraw function at all — there is no selector to call. revoke() from the delegate key reverts with NotDelegator, read as raw eth_call return data and decoded to that selector.",
+        "assertion": "The registry exposes no withdraw function at all — no selector to call. revoke() from the delegate key MINES AND REVERTS with NotDelegator: a real transaction with status 0 on the explorer, not a simulation and not a frontend message. 14/14 rehearsals.",
         "runsAgainst": "the deployed registry, called from the real delegate key",
-        "source": "contracts/src/MandateRegistry.sol:242"
+        "source": "contracts/src/MandateRegistry.sol:242",
+        "evidence": [
+          "0xed1868a5b22d4b6ec1f345f66eee49f61d4d202fdcbbde237f4a02251698087e"
+        ]
       },
       "history": "An error decoder once matched the SENDER ADDRESS with a regex and reported it as a revert selector. Selectors are decoded from raw return data, never pattern-matched out of a message string.",
       "provenance": {
@@ -409,5 +414,14 @@
       "mitigation": "Both legs are PERMISSIONLESS and were both executed from a stranger key, so the delegator never depends on us being online. The handler does not do it in-callback.",
       "consequence": "Beat 3's in-block action is settle + revoke + book. The payout is a second, permissionless step. Do not narrate it as money moving in the same block."
     }
-  ]
+  ],
+  "demoEvidence": {
+    "note": "The three explorer links the submission checklist requires, all from rehearsal run 1 unless noted.",
+    "beat1_cannot_take": "0xed1868a5b22d4b6ec1f345f66eee49f61d4d202fdcbbde237f4a02251698087e",
+    "beat2_can_trade": "0xba7d0af5d6a5befd3f4f6a36938c0c72105dda54abde03505e5bf4b0fcabea39",
+    "beat2_filled_example": "0x90726a115261bdc67c164d04114764c1d11e93b612ef9ac99ac8b8a37de2b5f1",
+    "beat3_settle_and_revoke": "0xdb795747fa69736c63cbb81f70332872dcad50175f210c12d3cfc31397d41088",
+    "beat3_payout_to_delegator": "0x51a9f9fc31eb1fe3400f1ba5e46d65be046ab43be83fc1af942476e24acfc3ad",
+    "payoutNote": "The payout was triggered by the STRANGER key — a wallet with no relationship to the mandate."
+  }
 }

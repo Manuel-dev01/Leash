@@ -108,8 +108,9 @@ and the principal is pulled and swept back inside the one transaction.
 **We do not claim it fills.** Binary books on this testnet are quote-only:
 measured over ~100 seconds, **161 orders on binary pools produced 1 fill**, while
 35 fills happened on spot and perp pools in the same window. Both sides are
-posted (55% BUY_YES, 45% SELL_YES) and simply do not cross. Every rehearsal so
-far has rested rather than filled.
+posted (55% BUY_YES, 45% SELL_YES) and simply do not cross. Across 14
+rehearsals **one filled and thirteen rested** — so a fill is possible, and
+scripting the demo around it would be a coin flip with poor odds.
 
 That is the venue's business, not Leash's. What beat 2 proves is the part that
 is ours: an order placed by a delegate, on the delegator's money, that never
@@ -125,6 +126,16 @@ a party who never traded.
 validator invocation **cannot be forged** — by a competitor or by us. That is
 what makes beat 3 checkable rather than asserted, and `verify.ts` proves it by
 calling `onEvent` from an ordinary EOA and asserting the revert.
+
+### The three links a judge should click
+
+| Beat | Transaction |
+|---|---|
+| 1 · can't take — mines and **reverts** with `NotDelegator` | [`0xed1868a5`](https://shannon-explorer.somnia.network/tx/0xed1868a5b22d4b6ec1f345f66eee49f61d4d202fdcbbde237f4a02251698087e) |
+| 2 · can trade — order accepted, `BinaryOrderPlaced` | [`0xba7d0af5`](https://shannon-explorer.somnia.network/tx/0xba7d0af5d6a5befd3f4f6a36938c0c72105dda54abde03505e5bf4b0fcabea39) |
+| 2 · the one that **filled**, 1 of 14 | [`0x90726a11`](https://shannon-explorer.somnia.network/tx/0x90726a115261bdc67c164d04114764c1d11e93b612ef9ac99ac8b8a37de2b5f1) |
+| 3 · validators settle **and revoke**, in-block | [`0xdb795747`](https://shannon-explorer.somnia.network/tx/0xdb795747fa69736c63cbb81f70332872dcad50175f210c12d3cfc31397d41088) |
+| 3 · payout to the delegator, triggered by a **stranger** | [`0x51a9f9fc`](https://shannon-explorer.somnia.network/tx/0x51a9f9fc31eb1fe3400f1ba5e46d65be046ab43be83fc1af942476e24acfc3ad) |
 
 ---
 
