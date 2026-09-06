@@ -13,7 +13,7 @@ what the rehearsals actually produced, not what we hoped they would.
 ## Before you record
 
 ```bash
-npx tsx scripts/verify.ts        # must be 32/32. If red, do not record.
+npx tsx scripts/verify.ts        # 33 checks, must be all green. If red, do not record.
 npx tsx scripts/demo-reset.ts    # clean state, seeded mandates, one market
 npx tsx scripts/collect.ts       # drain any outstanding refund claims first
 ```
@@ -64,8 +64,9 @@ Same key, same second. Place an order.
 **Say "placed", never "filled".** Measured: binary books on this testnet are
 quote-only — 161 orders produced 1 fill in ~100 seconds, while 35 fills happened
 on spot and perp pools in the same window. Both sides are posted and they do not
-cross. **Every rehearsal rested.** Claiming a fill invites the one correction we
-cannot recover from mid-demo.
+cross. **Thirteen of fourteen rehearsals rested.** A fill is possible — one run
+got one — but scripting the demo around it is a coin flip with poor odds, and
+claiming it invites the one correction we cannot recover from mid-demo.
 
 What to point at instead: `BinaryOrderPlaced` in the receipt, and the mandate
 meter above the ticket ticking down — read from the contract, not from the page.
@@ -97,7 +98,8 @@ Run `scripts/collect.ts` — **from the stranger key**.
 > a wallet with no relationship to the mandate at all. The delegator doesn't
 > depend on the delegate, and doesn't depend on us."
 
-**Show a `sweepRefunds` transaction and the delegator's balance rising.**
+**Show a `sweepRefunds` transaction and the delegator's balance rising** —
+[`0x51a9f9fc`](https://shannon-explorer.somnia.network/tx/0x51a9f9fc31eb1fe3400f1ba5e46d65be046ab43be83fc1af942476e24acfc3ad).
 Measured on the first real run: **10 mandates paid, 8.04 tUSDC to delegators, by
 a party who never traded.**
 
