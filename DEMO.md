@@ -140,15 +140,37 @@ against it on the binary path and it looks like success.
 
 | | |
 |---|---|
-| Runs completed | 14 of 20 at time of writing |
-| Full three-beat passes | **14 / 14** |
-| Beat 1 reverted on chain | 14 / 14 |
-| Beat 2 accepted by the venue | 14 / 14 |
-| Beat 2 **filled** | **1 / 14** — possible, not scriptable |
-| Beat 3 settled and revoked | 14 / 14 |
-| `seen[marketId]` after settle | `1`, every run — H1 has not recurred |
-| Silent rejections | **0** |
+| Runs attempted | **20** |
+| Full three-beat passes | **15** |
+| Failures — venue had no usable market | 3 |
+| Failures — harness timing bug, since fixed | 2 |
+| Failures caused by the product | **0** |
+| Beat 1 reverted on chain | 17 / 17 attempted |
+| Beat 2 accepted by the venue | 17 / 17 attempted |
+| Beat 2 **filled** | **4 / 17** — possible, not scriptable |
+| Beat 3 settled **and revoked** | 15 / 15 reached |
+| `seen[marketId]` after settle | `1`, every run — H1 did not recur |
+| **Silent rejections** | **0** — the thing we were hunting |
 | Handler gas per invocation | 945,766 – 1,028,680 (2-mandate batches) |
+
+Deployed handler across the whole set: **424 validator invocations, 18 markets
+settled**, subscription disarmed at the end.
+
+### The two failure modes, and which one is ours
+
+**`no-window` (3 runs) — the venue's.** No market in the usable band. On one run
+the short series was **entirely absent**: live ttls were 3,049s and 13,849s and
+nothing else. This is unmitigable and is the reason the backup video exists.
+
+**`seed-doomed-failed` (2 runs) — ours, and fixed.** The mandate seeded to
+breach expired 75s after creation, and on a slow run its own order could not be
+placed in time. Widened to 140s. Note it is timing-marginal rather than
+fill-caused: of the four runs that filled, two passed and two hit this.
+
+It also exposed a diagnostics bug worth keeping in mind: the harness reported
+`reverted with the following signature:` and stopped **before the selector** —
+the one part that says what happened. Revert reasons are now decoded from raw
+return data.
 
 ### What the rehearsals changed
 

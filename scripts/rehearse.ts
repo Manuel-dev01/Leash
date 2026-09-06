@@ -38,11 +38,36 @@ import "dotenv/config";
 import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import {
   createPublicClient, createWalletClient, http, formatEther, formatUnits,
-  parseAbi, encodeFunctionData, decodeEventLog, keccak256, toHex,
+  parseAbi, encodeFunctionData, decodeEventLog, decodeErrorResult, keccak256, toHex,
   type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { installUnwind, emergencyUnsubscribe, stillArmed, unwindPersistently } from "./unwind.js";
+
+/**
+ * The revert NAME, decoded from raw return data.
+ *
+ * Taking `message.split("
+")[0]` yields 'reverted with the following
+ * signature:' and stops exactly before the selector — the one part that says
+ * what happened. A failure report that omits the reason is how run 16 arrived
+ * as "placeForDelegator reverted" with no way to tell Expired from
+ * MarketNotAllowed.
+ */
+function why(e: unknown, abi: readonly unknown[]): string {
+  const seen = new Set<unknown>();
+  let cur: unknown = e;
+  while (cur && !seen.has(cur)) {
+    seen.add(cur);
+    const d = (cur as { data?: unknown }).data;
+    if (typeof d === "string" && d.startsWith("0x") && d.length >= 10) {
+      try { return decodeErrorResult({ abi: abi as never, data: d as Hex }).errorName; }
+      catch { return `undecoded ${d.slice(0, 10)}`; }
+    }
+    cur = (cur as { cause?: unknown }).cause;
+  }
+  return ((e as Error).message ?? String(e)).split(String.fromCharCode(10))[0] ?? "unknown";
+}
 import { EC, NETWORK, OrderKind, TOPICS } from "../packages/leash-ec/src/constants.js";
 import { ecClient, discoverMarkets, tradableMarketsDetailed } from "../packages/leash-ec/src/discover.js";
 
@@ -52,6 +77,12 @@ const HANDLER = (process.env.DEADHAND_HANDLER ?? "") as Address;
 const RUNS = Number(process.env.RUNS ?? 20);
 const SUB_GAS_LIMIT = BigInt(process.env.SUB_GAS_LIMIT ?? 8_000_000);
 const LOG = ".measurements/rehearsals.json";
+/**
+ * How long the doomed mandate lives. Long enough to survive setup on a slow
+ * run, short enough to be expired by the time the market resolves — which is
+ * what makes the validator revoke it.
+ */
+const DOOMED_TTL_S = Number(process.env.DOOMED_TTL_S ?? 140);
 
 const chain = {
   id: NETWORK.chainId, name: "Somnia Shannon",
@@ -210,9 +241,15 @@ async function oneRun(n: number): Promise<Run> {
   }
 
   // ---- two mandates: one that survives, one that outlives its clock -------
+  //
+  // The doomed mandate must still be LIVE when its order is placed and EXPIRED
+  // when the market resolves. 75s was too tight: beat 1 and beat 2 each cost a
+  // broadcast and a receipt, and on a slow run the mandate expired before its
+  // own order could be placed — reverting Expired and failing a run for a
+  // reason that has nothing to do with the product.
   const marketEnd = Number(mk.expiry);
   const ids: bigint[] = [];
-  for (const expiry of [BigInt(marketEnd + 3600), BigInt(now + 75)]) {
+  for (const expiry of [BigInt(marketEnd + 3600), BigInt(now + DOOMED_TTL_S)]) {
     const next = await pub.readContract({ address: REGISTRY, abi: regAbi, functionName: "nextMandateId" }) as bigint;
     const h = await wD.writeContract({
       address: REGISTRY, abi: regAbi, functionName: "createMandate",
@@ -294,7 +331,7 @@ async function oneRun(n: number): Promise<Run> {
     console.log(`  beat 2  ${run.filled ? "FILLED" : "rested (no fill this block)"}  orderId=${orderId ?? "?"}  ${NETWORK.explorer}/tx/${h}`);
   } catch (e) {
     run.failure = "beat2-threw";
-    run.detail = (e as Error).message.split(String.fromCharCode(10))[0] ?? "";
+    run.detail = why(e, regAbi);
     return run;
   }
 
@@ -307,7 +344,7 @@ async function oneRun(n: number): Promise<Run> {
     await pub.waitForTransactionReceipt({ hash: h });
   } catch (e) {
     run.failure = "seed-doomed-failed";
-    run.detail = (e as Error).message.split(String.fromCharCode(10))[0] ?? "";
+    run.detail = `${why(e, regAbi)} — the doomed mandate expires ${DOOMED_TTL_S}s after creation, and the run has to place its order before that`;
     return run;
   }
 

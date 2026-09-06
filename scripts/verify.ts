@@ -857,6 +857,49 @@ async function main() {
       n === 0 ? "no attribution trailers or build-doc citations in any commit message" : `${n} commit message line(s) carry an attribution trailer or build-doc citation`);
   }
 
+  // ---- the submission checklist, as code ---------------------------------
+  //
+  // These are literal requirements from the hackathon checklist. They are here
+  // rather than on a list someone ticks, because a heading that must be spelled
+  // exactly is precisely the kind of thing that drifts during an edit and is
+  // noticed by a judge rather than by us.
+  {
+    const readme = readFileSync("README.md", "utf8");
+    const problems: string[] = [];
+    // The heading is mandated verbatim.
+    if (!/^## How we use DreamDEX Event Contracts$/m.test(readme)) {
+      problems.push('README lacks the exact heading "## How we use DreamDEX Event Contracts"');
+    }
+    // The order path must be linked BY LINE NUMBER — a judge should not hunt.
+    if (!/MandateRegistry\.sol#L\d+/.test(readme)) {
+      problems.push("README does not link the order path by line number");
+    }
+    for (const addr of [REGISTRY, HANDLER]) {
+      if (!readme.includes(addr)) problems.push(`README does not name ${addr}`);
+    }
+    // The claims the checklist requires the README to state.
+    for (const phrase of ["non-upgradeable", "no admin key", "holds no funds"]) {
+      if (!readme.toLowerCase().includes(phrase)) problems.push(`README does not state "${phrase}"`);
+    }
+    // The no-custody test, named by path so it can be run.
+    if (!readme.includes("MandateEnforcement.t.sol")) {
+      problems.push("README does not name the balanceOf(registry) test by path");
+    }
+    // Three explorer links, and they must be full hashes.
+    const hashes = [...readme.matchAll(/shannon-explorer\.somnia\.network\/tx\/(0x[0-9a-fA-F]{64})/g)].map((m) => m[1]!);
+    if (new Set(hashes).size < 3) problems.push(`README cites ${new Set(hashes).size} full transaction hashes, needs at least 3`);
+    if (/tx\/0x[0-9a-fA-F]{1,63}(?![0-9a-fA-F])/.test(readme)) problems.push("README contains a TRUNCATED transaction hash — it proves nothing");
+    for (const f of ["LICENSE", "DEMO.md", "claims.json", "docs/sdk-feedback.md", "docs/adversarial.md"]) {
+      if (!existsSync(f)) problems.push(`missing ${f}`);
+    }
+    if (problems.length === 0) {
+      record("PASS", "submission-checklist",
+        `exact heading present, order path linked by line, both addresses named, ${new Set(hashes).size} full tx hashes, LICENSE + DEMO + claims + feedback + adversarial all present`);
+    } else {
+      record("FAIL", "submission-checklist", problems.join(" | "));
+    }
+  }
+
   // ---- build health ------------------------------------------------------
   console.log("\n  --- build ------------------------------------------------------");
   const sh = (label: string, cmd: string, args: string[], cwd?: string) => {

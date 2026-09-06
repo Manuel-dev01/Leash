@@ -30,13 +30,23 @@ constraints:
   roughly the **first half of its five-minute life**. At the wrong moment there
   is no usable market and the correct behaviour is to wait, not to fail.
 
-**Mitigation:** `rehearse.ts` picks a market whose ttl exceeds setup with margin
-and reports `no-window` as a distinct outcome from a failure. The recorded
-backup video removes this dependency entirely on the day, which is why the
-video is non-negotiable.
+**MEASURED ACROSS THE REHEARSAL SET, and this is the sharpest version of the
+risk.** Two runs out of eighteen failed with `no-window` — and on one of them
+the venue offered **no short-series market at all**: the only live ttls were
+3,049s and 13,849s. The 60s and 300s series were simply absent for that stretch.
 
-**Residual risk: real.** If the venue stops creating markets, beats 2 and 3 stop
-being demonstrable live. Nothing we build changes that.
+So the failure is not "we timed it badly". It is that **the market the demo
+needs does not always exist**, and when it doesn't there is nothing to wait a
+few seconds for.
+
+**Mitigation:** `rehearse.ts` reports `no-window` as an outcome distinct from a
+failure, and `verify.ts` says "no tradable market" rather than blaming the RPC.
+Practically: check `verify.ts` immediately before recording, and if the short
+series is missing, wait for it rather than starting.
+
+**Residual risk: real and unmitigated.** If the venue stops creating short
+markets during the recording window, beat 3 cannot be demonstrated live. The
+recorded backup video is the only answer, which is why it is non-negotiable.
 
 ### (b) The public RPC
 
@@ -64,9 +74,16 @@ price, not the price it offered — aggression is free and it removes the
 stale-book failure mode. A bid priced 3 cents through a 0.515 ask still rested
 with zero fills once, because the quote was gone by inclusion.
 
-**Residual risk: a rehearsal can end with the order resting rather than filled.**
-`rehearse.ts` records `filled` and `rested` separately rather than calling a rest
-a pass.
+**MEASURED: binary books are quote-only.** Over ~100 seconds venue-wide, 161
+orders on binary pools produced **1 fill**, while 35 fills landed on spot and
+perp pools. Both sides are posted — 55% BUY_YES, 45% SELL_YES, zero on the NO
+side — and they do not cross each other. Across the rehearsal set, a small
+minority of runs filled.
+
+**Residual risk: handled by not claiming it.** `rehearse.ts` records `filled`
+and `rested` separately rather than calling a rest a pass, and the demo script
+says "placed". Beat 2 proves the authorization and just-in-time custody path,
+which is ours; a counterparty showing up is not.
 
 ### (d) Our own gas
 

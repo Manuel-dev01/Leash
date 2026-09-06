@@ -250,5 +250,113 @@
     "revokedByDeadhand": true,
     "sweptToDelegator": null,
     "handlerGas": "945766"
+  },
+  {
+    "n": 15,
+    "at": "2026-09-06T20:00:23.938Z",
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000015525",
+    "ok": true,
+    "beats": {
+      "one": "0xb4f2000cc1a7113fcfb3c21720ea2fba6d6b4ef985af4a02036e489da90fab8c",
+      "two": "0x33cc9b58674d32f689a69e00968dd0ebf99bb4686446a779809ee7b0a45e491a",
+      "three": "0x280de3165a1f1efb0678cc138ed9c24f19e50035ec39e02558908311e774d580"
+    },
+    "failure": null,
+    "detail": "seen=1, 8 invocations, handler gas 1028680",
+    "filled": true,
+    "rested": true,
+    "revokedByDeadhand": true,
+    "sweptToDelegator": null,
+    "handlerGas": "1028680"
+  },
+  {
+    "n": 16,
+    "at": "2026-09-06T20:05:19.996Z",
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000015535",
+    "ok": false,
+    "beats": {
+      "one": "0x12a16deaf2b1482ea1baa9e884d53d0595f414a998415366a5213ab2135fb996",
+      "two": "0x3f6ca45de4f081b307abd1fb6c311bf3b04ec3deec7e074058b5cb62f0d66698",
+      "three": null
+    },
+    "failure": "seed-doomed-failed",
+    "detail": "The contract function \"placeForDelegator\" reverted with the following signature:",
+    "filled": true,
+    "rested": true,
+    "revokedByDeadhand": false,
+    "sweptToDelegator": null,
+    "handlerGas": null
+  },
+  {
+    "n": 17,
+    "at": "2026-09-06T20:07:19.106Z",
+    "marketId": "",
+    "ok": false,
+    "beats": {
+      "one": null,
+      "two": null,
+      "three": null
+    },
+    "failure": "no-window",
+    "detail": "ttls: 125,125,3125,3125,13925,13925 — none in 150..1800s",
+    "filled": false,
+    "rested": false,
+    "revokedByDeadhand": false,
+    "sweptToDelegator": null,
+    "handlerGas": null
+  },
+  {
+    "n": 18,
+    "at": "2026-09-06T20:08:55.839Z",
+    "marketId": "",
+    "ok": false,
+    "beats": {
+      "one": null,
+      "two": null,
+      "three": null
+    },
+    "failure": "no-window",
+    "detail": "ttls: 3049,3049,13849,13849 — none in 150..1800s",
+    "filled": false,
+    "rested": false,
+    "revokedByDeadhand": false,
+    "sweptToDelegator": null,
+    "handlerGas": null
+  },
+  {
+    "n": 19,
+    "at": "2026-09-06T20:10:11.164Z",
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000015541",
+    "ok": false,
+    "beats": {
+      "one": "0x1e880c1abd7dc7c3ea94b0b574399ef49bea457a8effd04e8528c44306d1ea05",
+      "two": "0x81811ef5734d0022af640692fed71054d1dada31908ee05b4c4d96dcec6d0b84",
+      "three": null
+    },
+    "failure": "seed-doomed-failed",
+    "detail": "The contract function \"placeForDelegator\" reverted with the following signature:",
+    "filled": true,
+    "rested": true,
+    "revokedByDeadhand": false,
+    "sweptToDelegator": null,
+    "handlerGas": null
+  },
+  {
+    "n": 20,
+    "at": "2026-09-06T20:12:11.024Z",
+    "marketId": "",
+    "ok": false,
+    "beats": {
+      "one": null,
+      "two": null,
+      "three": null
+    },
+    "failure": "no-window",
+    "detail": "ttls: 108,108,2808,2808,13608,13608 — none in 150..1800s",
+    "filled": false,
+    "rested": false,
+    "revokedByDeadhand": false,
+    "sweptToDelegator": null,
+    "handlerGas": null
   }
 ]
