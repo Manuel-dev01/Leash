@@ -158,15 +158,41 @@ async function oneRun(n: number): Promise<Run> {
   }
   const now = Math.floor(Date.now() / 1000);
   const SETUP_S = 60;
-  const usable = r.live
+  const candidates = r.live
     .map((m) => ({ m, ttl: Number(m.expiry) - now }))
     .filter((x) => x.ttl > SETUP_S + 90 && x.ttl < 1800)
-    .sort((a, b) => a.ttl - b.ttl)[0];
+    .sort((a, b) => a.ttl - b.ttl);
+
+  // REFUSE A MARKET THAT ALREADY CARRIES RESERVATIONS.
+  //
+  // A crashed run leaves its reservations OPEN, and revoking the mandate does
+  // not close them — only `settleOne` does, which needs the market resolved.
+  // So an unresolved market that has inherited reservations cannot be drained
+  // at all; it can only be avoided.
+  //
+  // This is a demo risk, not a measurement curiosity. It already happened: a
+  // dead run left 20 open, the next run on the same market found 40 pending
+  // against a cap of 32, and the batch was clipped. On rehearsal night the same
+  // mechanism turns "twelve mandates settle together" into a partial settle on
+  // camera — and the gap between 12 seeded and a cap of 15 is three stale
+  // reservations wide.
+  let usable: { m: typeof r.live[number]; ttl: number } | undefined;
+  const skipped: string[] = [];
+  for (const c of candidates) {
+    const pend = await pub.readContract({
+      address: REGISTRY, abi: regAbi, functionName: "pendingSettlement", args: [c.m.marketId],
+    }) as bigint;
+    if (pend === 0n) { usable = c; break; }
+    skipped.push(`${short(c.m.marketId)}:${pend}`);
+  }
   if (!usable) {
-    run.failure = "no-window";
-    run.detail = `ttls: ${r.live.map((m) => Number(m.expiry) - now).join(",")} — none in ${SETUP_S + 90}..1800s`;
+    run.failure = candidates.length === 0 ? "no-window" : "all-markets-carry-stale-reservations";
+    run.detail = candidates.length === 0
+      ? `ttls: ${r.live.map((m) => Number(m.expiry) - now).join(",")} — none in ${SETUP_S + 90}..1800s`
+      : `every usable market already has open reservations: ${skipped.join(", ")}`;
     return run;
   }
+  if (skipped.length) console.log(`  skipped ${skipped.length} market(s) carrying stale reservations: ${skipped.join(", ")}`);
   const mk = usable.m;
   run.marketId = mk.marketId;
   console.log(`\n[run ${n}] ${mk.asset} ttl=${usable.ttl}s market=${short(mk.marketId)} pool=${short(mk.pool)}`);
@@ -285,6 +311,20 @@ async function oneRun(n: number): Promise<Run> {
     return run;
   }
 
+  // ASSERT THE SETUP, rather than discovering it in the result. We placed
+  // exactly two orders on this market and started from zero pending, so pending
+  // must be exactly two. Anything else means state arrived from somewhere we
+  // did not put it, and every number this run produces is about a batch we did
+  // not construct.
+  const pendNow = await pub.readContract({
+    address: REGISTRY, abi: regAbi, functionName: "pendingSettlement", args: [mk.marketId],
+  }) as bigint;
+  if (pendNow !== 2n) {
+    run.failure = "unexpected-pending";
+    run.detail = `expected 2 open reservations after seeding, found ${pendNow}`;
+    return run;
+  }
+
   // ---- BEAT 3: validators settle, revoke, and sweep -----------------------
   const invBefore = await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "invocations" }) as bigint;
   const setBefore = await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "marketsSettled" }) as bigint;
@@ -328,7 +368,27 @@ async function oneRun(n: number): Promise<Run> {
   }
 
   // Read what the handler and registry actually emitted, not what we hoped.
-  const logs = await pub.getLogs({ fromBlock, toBlock: await pub.getBlockNumber() });
+  //
+  // SCOPED AND WINDOWED, both mandatory. This line previously had neither
+  // `address` nor a window, which meant a CHAIN-WIDE scan across every block
+  // since the subscription — thousands of them for a fifteen-minute market.
+  // The RPC rejects any range over 1000 blocks outright, so every run would
+  // have thrown here; and a chain-wide 1000-block scan returns 13-16 MB, past
+  // viem's 10 MB response cap, so widening the window is not the fix either.
+  //
+  // No topic filter, deliberately: this RPC ignores them (see doctor.ts), and
+  // there are only two addresses to read. Decoding does the filtering.
+  const head2 = await pub.getBlockNumber();
+  const SPAN = BigInt(NETWORK.maxGetLogsBlockRange - 1);
+  const logs: { address: Address; data: Hex; topics: readonly Hex[]; transactionHash: Hex | null }[] = [];
+  for (const addr of [HANDLER, REGISTRY]) {
+    for (let hi = head2; hi > fromBlock; hi -= SPAN + 1n) {
+      const lo = hi - SPAN > fromBlock ? hi - SPAN : fromBlock;
+      const page = await pub.getLogs({ address: addr, fromBlock: lo, toBlock: hi });
+      logs.push(...(page as unknown as typeof logs));
+      if (lo === fromBlock) break;
+    }
+  }
   for (const l of logs) {
     if (l.address.toLowerCase() === HANDLER.toLowerCase()) {
       try {

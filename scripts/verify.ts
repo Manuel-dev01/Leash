@@ -28,13 +28,14 @@ import "dotenv/config";
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import {
-  createPublicClient, http, parseAbi, keccak256, decodeErrorResult, formatUnits,
-  formatEther, encodeFunctionData, type Address, type Hex,
+  createPublicClient, http, parseAbi, keccak256, decodeErrorResult, decodeEventLog,
+  formatUnits, formatEther, encodeFunctionData, toHex, type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { EC, NETWORK, TOPICS } from "../packages/leash-ec/src/constants.js";
 import { ecClient, discoverMarkets, tradableMarketsDetailed } from "../packages/leash-ec/src/discover.js";
 import { readHeld } from "../apps/web/src/held.js";
+import { binaryPoolWriteAbi } from "@somnia-chain/markets-sdk";
 
 const RPC = process.env.EC_RPC_URL ?? "https://api.infra.testnet.somnia.network";
 /** Routes nowhere. Used to prove the failure paths actually run. */
@@ -128,6 +129,7 @@ const hndAbi = parseAbi([
   "function seen(bytes32) view returns (uint32)",
   "function registry() view returns (address)",
   "function onEvent(uint256,address,bytes32[],bytes)",
+  "event Deadhand(bytes32 indexed marketId, address indexed pool, uint256 processed, uint256 failed, bool drained, uint256 gasUsed)",
 ]);
 
 const erc20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function decimals() view returns (uint8)"]);
@@ -532,25 +534,71 @@ async function main() {
     // measurement run and never put back. A verifier that checks the evidence
     // exists but not that the shipped value follows from it is checking the
     // paperwork rather than the thing.
+    // The subscription is armed at this limit, and the limit applies to the
+    // WHOLE invocation — what the receipt charges — while the fit above is in
+    // BODY gas, measured by `gasleft()` inside `_onEvent`. The gap is the
+    // precompile dispatch, the onEvent wrapper and intrinsic cost.
+    //
+    // That gap is MEASURED, not assumed: receipt gasUsed minus the event's
+    // in-body figure is 107,556 gas on every one of the three settles, at n=3,
+    // n=12 and n=32. Identical to the gas, which is what a fixed wrapper should
+    // look like. An earlier version of this line reserved "5/6 of the limit",
+    // which was a number with no derivation sitting in a verifier — exactly the
+    // kind of figure that gets quoted later as though it meant something.
     const SHIP_GAS_LIMIT = 8_000_000;
-    const WORKING_BUDGET = (SHIP_GAS_LIMIT * 5) / 6;
+    const WRAPPER_OVERHEAD = 107_556;
+    const WORKING_BUDGET = SHIP_GAS_LIMIT - WRAPPER_OVERHEAD;
+
+    // Headroom is a deliberate 50%, and it is not timidity. Running out of gas
+    // in a validator callback settles NOTHING and reports no error anyone sees.
+    // It covers fit error (the two-point fit under-predicted n=32 by 5.8%),
+    // and mandates that cost more than the ones measured — a revoked mandate
+    // writes an extra event and slot, a failed transfer books a claim.
+    const HEADROOM = 0.5;
     const binds = Math.floor((WORKING_BUDGET - fixed) / marginal);
-    const want = Math.floor(binds * 0.5);
-    const need = fixed + marginal * Number(cap);
+    const want = Math.floor(binds * HEADROOM);
+    const inBody = fixed + marginal * Number(cap);
+    const need = inBody + WRAPPER_OVERHEAD;
     must(Number(cap) === want,
-      `deployed batchCap is ${cap}, but the fit implies ${want} (binds at ~${binds}, 50% headroom). ` +
-      `A full batch at ${cap} needs ~${Math.round(need).toLocaleString()} gas against a ${WORKING_BUDGET.toLocaleString()} budget.`);
+      `deployed batchCap is ${cap}, but the fit implies ${want} (binds at ~${binds}, ${HEADROOM * 100}% headroom). ` +
+      `A full batch at ${cap} needs ~${Math.round(need).toLocaleString()} gas against the ${SHIP_GAS_LIMIT.toLocaleString()} limit.`);
     return `cap ${cap} == fit (${k} points: fixed ~${Math.round(fixed).toLocaleString()} + ` +
-      `~${Math.round(marginal).toLocaleString()}/mandate; binds ~${binds}, shipped at 50%); ` +
-      `a full batch needs ~${Math.round(need).toLocaleString()} gas`;
+      `~${Math.round(marginal).toLocaleString()}/mandate in-body, +${WRAPPER_OVERHEAD.toLocaleString()} measured wrapper; ` +
+      `binds ~${binds} under ${SHIP_GAS_LIMIT.toLocaleString()}, shipped at ${HEADROOM * 100}%); ` +
+      `a full batch charges ~${Math.round(need).toLocaleString()} gas`;
   });
 
   await check("skip-cost", async () => {
-    // Deliberately cannot pass while the figure predates the current build.
+    // This used to assert only that the claim's provenance LABEL pointed at the
+    // current build. That checks the paperwork: any number written into
+    // claims.json with the right code hash would have passed. It now checks the
+    // NUMBER, against a receipt.
     const c = byId("skip-cost")!;
     must(c.provenance?.codeHash === handlerHash,
       `figure measured on ${c.provenance?.codeHash}; the deployed handler is ${handlerHash.slice(0, 12)}… — re-run scripts/measure-skip.ts`);
-    return "measured on the deployed bytecode";
+
+    // Check the CITED receipts, not whatever happens to be recent. Scanning
+    // recent blocks made this check depend on the subscription having been
+    // armed lately, so it failed for a reason that had nothing to do with the
+    // claim. Evidence hashes are stable; recency is not.
+    const ev = ((c as unknown as { provenance?: { evidence?: string[] } }).provenance?.evidence ?? []);
+    must(ev.length > 0, "claims.json cites no skip-invocation receipts to check the figure against");
+    const dead = keccak256(toHex("Deadhand(bytes32,address,uint256,uint256,bool,uint256)"));
+    const saw = keccak256(toHex("DeadhandSaw(bytes32)"));
+    const gasSeen = new Set<string>();
+    for (const h of ev) {
+      must(/^0x[0-9a-f]{64}$/i.test(h), `evidence "${h}" is not a full transaction hash`);
+      const rec = await pub.getTransactionReceipt({ hash: h as Hex });
+      must(rec.status === "success", `skip evidence ${h.slice(0, 12)}… has status ${rec.status}`);
+      must(rec.logs.some((l) => l.topics[0] === saw), `${h.slice(0, 12)}… has no DeadhandSaw log — not an invocation we saw`);
+      must(!rec.logs.some((l) => l.topics[0] === dead), `${h.slice(0, 12)}… carries a Deadhand log — that is a SETTLE, not a skip`);
+      gasSeen.add(rec.gasUsed.toString());
+    }
+    must(gasSeen.size === 1, `skip gas is not deterministic across ${ev.length} receipts: ${[...gasSeen].join(", ")}`);
+    const measured = [...gasSeen][0]!;
+    must(measured === "291181", `claims.json says 291,181 gas per skip; receipts say ${Number(measured).toLocaleString()}`);
+    const checkedTx = ev.length;
+    return `291,181 gas confirmed against ${checkedTx} skip receipt(s), identical each time`;
   });
 
   // ---- layer 2 deletable -------------------------------------------------
@@ -574,10 +622,29 @@ async function main() {
   });
 
   await check("validators-settle-a-batch-in-block", async () => {
+    // `marketsSettled > 0` was an INGREDIENT, not the conclusion: the claim
+    // names batch sizes, and "at least one settle happened" does not check
+    // them. Each cited evidence hash is now fetched and its Deadhand event
+    // read.
     const set = await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "marketsSettled" }) as bigint;
     must(set > 0n, `the DEPLOYED handler has settled ${set} markets — the claim is about this deployment, not a previous one`);
-    const inv = await pub.readContract({ address: HANDLER, abi: hndAbi, functionName: "invocations" }) as bigint;
-    return `${set} settles across ${inv} validator invocations on ${HANDLER.slice(0, 10)}…`;
+    const c = byId("validators-settle-a-batch-in-block")!;
+    const ev = ((c as unknown as { proof: { evidence?: string[] } }).proof.evidence ?? []);
+    must(ev.length >= 2, `claim cites ${ev.length} evidence transactions; it names several batch sizes`);
+    const dead = keccak256(toHex("Deadhand(bytes32,address,uint256,uint256,bool,uint256)"));
+    const sizes: number[] = [];
+    for (const h of ev) {
+      must(/^0x[0-9a-f]{64}$/i.test(h), `evidence "${h}" is not a full transaction hash — a truncated hash proves nothing`);
+      const rec = await pub.getTransactionReceipt({ hash: h as Hex });
+      must(rec.status === "success", `evidence ${h.slice(0, 12)}… has status ${rec.status}`);
+      const log = rec.logs.find((l) => l.topics[0] === dead && l.address.toLowerCase() === HANDLER.toLowerCase());
+      must(!!log, `evidence ${h.slice(0, 12)}… has no Deadhand event from the deployed handler`);
+      const d = decodeEventLog({ abi: hndAbi, data: log!.data, topics: log!.topics as never });
+      const a = d.args as unknown as { processed: bigint; failed: bigint };
+      must(a.failed === 0n, `evidence ${h.slice(0, 12)}… settled with ${a.failed} failures`);
+      sizes.push(Number(a.processed));
+    }
+    return `batches of ${sizes.sort((x, y) => x - y).join(", ")} mandates, failed=0 on every one, from ${ev.length} verified validator invocations`;
   });
 
   await check("real-event-contract-order", async () => {
@@ -587,10 +654,54 @@ async function main() {
   });
 
   await check("no-eoa-authorization-surface", async () => {
-    // The gate we built the whole product around. Re-checked, because pools
-    // were upgraded once already inside this hackathon.
-    const sel = keccak256(Buffer.from("placeBinaryOrderFor(address,uint8,uint256,uint256,uint64,uint8,uint8,address,uint96)") as unknown as Hex);
-    return `probe A recorded 0x3fb0ba2e (OnlyApprovedContracts) from three senders; selector under test ${sel.slice(0, 10)}`;
+    // RE-RUNS PROBE A. This check previously computed a selector and returned
+    // unconditionally — it asserted NOTHING and could never fail, while
+    // reporting green on the finding the entire product is built on. Pools were
+    // upgraded once inside this hackathon, so the gate is re-proven live rather
+    // than remembered.
+    const r = await tradableMarketsDetailed(ecClient(RPC), await discoverMarkets(ecClient(RPC), { windows: 8 }), { limit: 1, maxChecks: 12 });
+    must(r.live.length > 0, `no live pool to probe (${r.checked} checked, ${r.errors} errors)`);
+    const pool = r.live[0]!.pool;
+    // A future expiry INSIDE the market window: expireTimestampNs = 0 is
+    // rejected outright, and exceeding the market expiry reverts
+    // OrderExpiryBeyondMarket — either would revert before the authorization
+    // gate and prove nothing about it.
+    const expNs = (r.live[0]!.expiry - 5n) * 1_000_000_000n;
+    const stranger = acct("STRANGER_KEY");
+    // The ABI comes from the SDK, not from a signature typed here. A
+    // hand-written `placeBinaryOrderFor(address,uint8,...)` hashed to
+    // 0x275284bb while the real selector is 0x5d97c566, so the call hit the
+    // fallback and reverted with NO return data — which the first version of
+    // this check accepted as a pass. Re-deriving an ABI is how you end up
+    // proving something about a function that does not exist.
+    const data = encodeFunctionData({
+      abi: binaryPoolWriteAbi,
+      functionName: "placeBinaryOrderFor",
+      args: [stranger.address, 0, 100_000n, 1_000_000n, expNs, 0, 0,
+             "0x0000000000000000000000000000000000000000", 0n, 0n] as never,
+    });
+    try {
+      await pub.call({ account: stranger.address, to: pool, data });
+      throw new Error("placeBinaryOrderFor did NOT revert from an EOA — the authorization gate is gone, and the product's premise with it");
+    } catch (e) {
+      const msg = (e as Error).message;
+      must(!msg.includes("did NOT revert"), msg);
+      // The selector, from raw return data — not matched out of a message.
+      let sel = "";
+      let cur: unknown = e;
+      const seen = new Set<unknown>();
+      while (cur && !seen.has(cur)) {
+        seen.add(cur);
+        const d = (cur as { data?: unknown }).data;
+        if (typeof d === "string" && d.startsWith("0x") && d.length >= 10) { sel = d.slice(0, 10); break; }
+        cur = (cur as { cause?: unknown }).cause;
+      }
+      // The selector is REQUIRED. Accepting an empty revert would let this
+      // pass on any failure at all, which is how it got here.
+      must(sel === "0x3fb0ba2e",
+        `expected OnlyApprovedContracts (0x3fb0ba2e) from ${pool}, got ${sel || "no return data"}`);
+      return `placeBinaryOrderFor reverts from an EOA on live pool ${pool.slice(0, 10)}…` + `with ${sel} (OnlyApprovedContracts)`;
+    }
   });
 
   // ---- subscription hygiene, enforced structurally -----------------------

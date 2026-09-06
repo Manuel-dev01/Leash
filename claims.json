@@ -250,7 +250,12 @@
       "history": "RETRACTED: 0.00044017 STT / ~64,700 gas. That figure does not reproduce on this build, and the ~28,000 gas of H1 instrumentation added since does not explain a 4.5x gap. Retracted as unexplained rather than re-derived — inventing an explanation is how the previous three wrong numbers survived. Also retracted: 789 gas (probe handler), and 78,100 / ~339,000 (both divided out of MIXED windows and disagreeing by 4x).",
       "provenance": {
         "codeHash": "0xc58d368b4cad839bae8b2b80466dc0e8c5d07781003f273ee7d88a11d77dfee6",
-        "evidence": "receipts at blocks 480662211-480663411"
+        "evidence": [
+          "0x7aff8eff55f9d9d151437909e2148bcedc71d444629120c3f1832d499be4c9e5",
+          "0xb5c7f6112812b5966687d77dd4ebf97c4d1503afd871d84205e30d3b072dd1e2",
+          "0x72124629ba332d48bfd14f0339327521ce9d155f1b3905f68b5c50563952d429"
+        ],
+        "note": "Skip invocations: a DeadhandSaw log and no Deadhand log, so nothing was settled. gasUsed 291,181 on all three."
       },
       "alsoEstablished": "Charging is on gas USED, not gasLimit: the identical figure came back to the wei at gasLimit 3,000,000 and 8,000,000 — same call, one variable changed. And pendingSettlement is O(1), so the skip cost does not grow with the mandate count."
     },
