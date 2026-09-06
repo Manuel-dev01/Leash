@@ -725,9 +725,15 @@ async function main() {
       // AMBER, not FAIL: the money is recoverable, it just needs the
       // permissionless collect step. Failing would block a run for something
       // that is one command away.
+      // Names the CAUSE, because most of this backlog cannot be collected:
+      // _sweep returns collateral to whichever delegator places next without
+      // decrementing refundClaim, so the claim outlives the money. sweepRefunds
+      // pays from balance and can never clear a phantom claim. An amber that
+      // recommends a command which cannot work is worse than one that explains.
       record("AMBER", "delegators-paid",
-        `${formatUnits(claims + owed - held, 6)} tUSDC is owed to delegators and NOT yet held by the registry — ` +
-        `run scripts/collect.ts (cancelExpiredOrders then sweepRefunds) before recording (${line})`);
+        `${formatUnits(claims + owed - held, 6)} tUSDC of refund claims outstanding, most PHANTOM — booked against ` +
+        `collateral _sweep already returned without decrementing them (knownLimitations: sweep-ignores-refund-claims). ` +
+        `Recent claims are collectable with scripts/collect.ts; the rest need the contract fix (${line})`);
     }
   }
 

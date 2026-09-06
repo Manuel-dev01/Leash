@@ -125,7 +125,17 @@ async function main() {
   // 32 STT is a balance FLOOR checked at subscribe, not a deposit.
   if (hBal < 32_500_000_000_000_000_000n) problems.push(`handler holds ${formatEther(hBal)} STT — below the 32 STT floor plus a margin, so subscribe() will revert InsufficientBalance`);
   if (claims > held) {
-    waits.push(`${formatUnits(claims - held, 6)} tUSDC is owed to delegators and not yet collected — run scripts/collect.ts so verify reads green in frame`);
+    // NOT a blocker, and NOT "run collect.ts". Most of this backlog is phantom:
+    // the _sweep defect returns collateral to whichever delegator places next
+    // WITHOUT decrementing refundClaim, so the claim stays booked against money
+    // that has already left. sweepRefunds pays from balance, so it can never
+    // clear them. Telling the operator to run a command that cannot work is the
+    // same class of lie as a status line that prints without checking.
+    console.log(`
+  NOTE  ${formatUnits(claims - held, 6)} tUSDC of refund claims are outstanding and most are PHANTOM —`);
+    console.log(`        booked against collateral that _sweep already returned without decrementing them.`);
+    console.log(`        collect.ts cannot clear these; the contract fix can. Fine to record with this showing:`);
+    console.log(`        it is a defect our own instrumentation found and diagnosed.`);
   }
 
   for (const [name, floor] of [["FUND_KEY", 5n], ["DELEGATE_KEY", 1n], ["STRANGER_KEY", 5n]] as const) {
