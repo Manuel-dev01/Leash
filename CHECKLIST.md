@@ -57,7 +57,7 @@ No wallet or role is involved here. This is the public page.
 
 ---
 
-## 2 · Setup — profile A
+## 2 · Setup — **window A** (the delegator)
 
 **Look before you touch.** Top to bottom you should see: a one-line topbar
 (`leash`, `chain 50312`, `add somnia 50312`), then **`step 1 of 4 · who trades`**
@@ -120,7 +120,7 @@ rationale anywhere on the page.**
 
 ---
 
-## 3 · Your delegation — profile A
+## 3 · Your delegation — **window A** (the delegator)
 
 | # | Do | Expect |
 |---|---|---|
@@ -134,12 +134,15 @@ rationale anywhere on the page.**
 
 ---
 
-## 4 · The delegate — profile B
+## 4 · The delegate — **window B**
+
+Switch windows here. Everything below happens in B, and B never opens the
+delegator view.
 
 | # | Do | Expect |
 |---|---|---|
-| 4.1 | Open the link from 2.21 | **One screen.** No step counter, no numbered nav |
-| 4.2 | Find **`connect wallet`** | It is **on this screen**. You never touch the delegator view |
+| 4.1 | Paste the link from 2.21 into window B | **One screen.** No step counter, and no `01 /` label above the heading |
+| 4.2 | Find **`connect wallet`** | It is **on this screen**. You never touch window A |
 | 4.3 | Connect | Shows **`trading as 0x5b92…`** |
 | 4.4 | Envelope at the top | **`you may still spend`** with the real remaining budget |
 | 4.5 | Pick a market | The row marks itself `trading` |
@@ -156,7 +159,7 @@ rationale anywhere on the page.**
 
 ---
 
-## 5 · Negative cases
+## 5 · Negative cases — **window A unless a step says B**
 
 | # | Do | Expect |
 |---|---|---|
@@ -165,8 +168,8 @@ rationale anywhere on the page.**
 | 5.3 | Go offline, reload `/` | First stat shows **`—`** and *chain unreachable* — **never `0.00`** |
 | 5.4 | Offline, reload `/app`, reach step 2 | Markets report **failed** with a retry — not a spinner |
 | 5.5 | Wallet on the wrong network | Topbar does **not** say `network ready` |
-| 5.6 | A ends the delegation, then B places | `the delegator ended this delegation.` |
-| 5.7 | B tries a market A did not allow | `refused — this market is not on the mandate.` |
+| 5.6 | In A, end the delegation; then place from B | `the delegator ended this delegation.` |
+| 5.7 | From B, trade a market A did not allow | `refused — this market is not on the mandate.` |
 
 ---
 
