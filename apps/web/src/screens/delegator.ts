@@ -1,5 +1,5 @@
 /**
- * Delegator screens: connect, pick, limits, review, monitor, revoke.
+ * Delegator screens: connect, pick, limits, review, issue, monitor, revoke.
  *
  * Every limit rendered here is READ FROM THE CONTRACT once a mandate exists.
  * The draft screens (02/03) show local state because the mandate does not exist
@@ -11,14 +11,39 @@ import {
   pub, wallet, connect, addNetwork, onRightChain, registryAbi, erc20Abi,
   REGISTRY, COLLATERAL, txUrl, fmt, errName,
 } from "../chain.js";
-import { state, set, staleness } from "../state.js";
+import { state, set, go, staleness } from "../state.js";
+import { qrSvg } from "../qr.js";
+import { reloadMarkets } from "../markets.js";
 import type { Address, Hex } from "viem";
 
 const esc = (s: string) =>
   s.replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c] as string));
 const short = (a: string) => a.slice(0, 6) + "…" + a.slice(-4);
-const err = () =>
-  state.error ? '<span style="font-size:12px;color:var(--accent)">' + esc(state.error) + "</span>" : "";
+
+/**
+ * Failures and notices, rendered differently and BOTH announced.
+ *
+ * `overflow-wrap:anywhere` because the content is a chain error: it can carry
+ * an unbroken hex blob with nowhere to wrap, and the frame would clip it into
+ * something that reads like a complete sentence.
+ */
+export const err = () => {
+  const parts: string[] = [];
+  if (state.error) {
+    parts.push(
+      '<span role="alert" style="font-size:12px;color:var(--accent);overflow-wrap:anywhere;min-width:0">' +
+      esc(state.error) + "</span>",
+    );
+  }
+  if (state.notice) {
+    parts.push(
+      '<span role="status" style="font-size:12px;color:var(--dim);overflow-wrap:anywhere;min-width:0">' +
+      esc(state.notice) + "</span>",
+    );
+  }
+  return parts.join("");
+};
+
 const logHtml = () =>
   state.log
     .map((l) => '<div style="padding:6px 0;border-top:1px solid var(--rule)">' + l.html + "</div>")
@@ -43,7 +68,8 @@ export function connectScreen(): string {
     '<button id="d-addnet" class="btn ghost" style="display:flex;align-items:center;justify-content:space-between">',
     "<span>" + (state.onChain ? "network ready" : "add somnia network") + "</span>",
     '<span style="font-size:11px;color:var(--dimmer)">chain:50312</span></button>',
-    '<button id="d-connect" class="btn">' + (state.account ? short(state.account) : "connect wallet") + "</button>",
+    '<button id="d-connect" class="btn"' + (state.busy ? " disabled" : "") + ">" +
+      (state.busy ? "waiting for your wallet…" : state.account ? short(state.account) : "connect wallet") + "</button>",
     "</div>",
     '<div style="border-top:1px solid var(--rule);padding-top:16px;display:flex;flex-direction:column;gap:10px">',
     '<span class="eyebrow">what leash cannot do</span>',
@@ -64,12 +90,13 @@ export function bindConnect(): void {
     }
   });
   document.getElementById("d-connect")?.addEventListener("click", async () => {
+    set({ busy: true, error: "" });
     try {
       const a = await connect();
       if (!(await onRightChain())) await addNetwork();
-      set({ account: a, onChain: await onRightChain(), error: "", screen: "pick" });
+      set({ account: a, onChain: await onRightChain(), busy: false, error: "", screen: "pick" });
     } catch (e) {
-      set({ error: errName(e) });
+      set({ busy: false, error: errName(e) });
     }
   });
 }
@@ -82,8 +109,8 @@ export function pickScreen(): string {
     '<span class="eyebrow">02 / who trades</span>',
     '<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">who is trading for you?</h2>',
     '<div style="display:flex;flex-direction:column;gap:9px">',
-    '<span class="eyebrow" style="letter-spacing:0.12em">delegate_address</span>',
-    '<input id="d-addr" class="field" value="' + esc(state.delegate) + '" placeholder="0x…" spellcheck="false" />',
+    '<label class="eyebrow" for="d-addr" style="letter-spacing:0.12em">delegate_address</label>',
+    '<input id="d-addr" class="field" value="' + esc(state.delegate) + '" placeholder="0x…" spellcheck="false" autocomplete="off" />',
     '<span class="hint">they sign their own transactions from this address. they never see your key.</span>',
     "</div>",
     err(),
@@ -94,9 +121,14 @@ export function pickScreen(): string {
 
 export function bindPick(): void {
   const input = document.getElementById("d-addr") as HTMLInputElement | null;
+  const clear = document.querySelector<HTMLElement>('[role="alert"]');
   input?.addEventListener("input", () => {
+    // Deliberately NOT set(): a re-render would replace the input mid-keystroke.
+    // The error node is cleared directly instead, so the message does not sit
+    // there contradicting what the user is typing.
     state.delegate = input.value;
     state.error = "";
+    if (clear) clear.textContent = "";
   });
   document.getElementById("d-next")?.addEventListener("click", () => {
     if (!/^0x[0-9a-fA-F]{40}$/.test(state.delegate.trim())) {
@@ -109,50 +141,64 @@ export function bindPick(): void {
 
 // ---- 03 limits -----------------------------------------------------------
 
-function slider(id: string, label: string, val: number, min: number, max: number, step: number, note: string): string {
+function slider(id: string, label: string, val: number, min: number, max: number, step: number, note: string, unit: string): string {
   return [
-    '<div class="sep" style="display:flex;flex-direction:column;gap:10px">',
-    '<div class="rowline"><span style="font-size:13px">' + label + "</span>",
-    '<span style="font-size:19px;letter-spacing:-0.03em">' + val + "</span></div>",
-    '<input id="' + id + '" type="range" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val + '" style="width:100%" />',
-    '<span class="hint">' + note + "</span>",
+    '<div class="sep" style="display:flex;flex-direction:column;gap:10px;min-width:0">',
+    '<div class="rowline"><label for="' + id + '" style="font-size:13px">' + label + "</label>",
+    '<span id="' + id + '-out" style="font-size:19px;letter-spacing:-0.03em">' + val + "</span></div>",
+    '<input id="' + id + '" type="range" min="' + min + '" max="' + max + '" step="' + step + '" value="' + val +
+      '" style="width:100%" aria-describedby="' + id + '-note" aria-valuetext="' + val + " " + unit + '" />',
+    '<span class="hint" id="' + id + '-note">' + note + "</span>",
     "</div>",
   ].join("");
 }
 
-export function limitsScreen(): string {
-  const mkts = state.markets;
-  const rows =
-    mkts.length === 0
-      ? '<span class="hint">reading live markets from chain…</span>'
-      : mkts
-          .map((mk, i) => {
-            const on = state.allowed.has(mk.marketId);
-            return [
-              '<button data-mk="' + i + '" class="mk" style="display:flex;justify-content:space-between;gap:10px;width:100%;background:none;border:1px solid ',
-              on ? "var(--accent)" : "var(--rule)",
-              ";padding:12px 13px;color:",
-              on ? "var(--ink)" : "var(--dim)",
-              ';cursor:pointer;font-family:var(--mono);font-size:12.5px;text-align:left">',
-              '<span style="line-height:1.5">' + esc(mk.label) + "</span>",
-              '<span style="font-size:11px;color:' + (on ? "var(--accent)" : "var(--dimmer)") + '">' + (on ? "on" : "off") + "</span>",
-              "</button>",
-            ].join("");
-          })
-          .join("");
+/** The four discovery outcomes, each said out loud. */
+function marketList(): string {
+  if (state.marketsState === "loading") {
+    return '<span class="hint">reading live markets from chain…</span>';
+  }
+  if (state.marketsState === "failed") {
+    return [
+      '<span role="alert" style="font-size:12px;color:var(--accent);overflow-wrap:anywhere">',
+      esc(state.marketsError || "market discovery failed."),
+      "</span>",
+      '<button id="retry-markets" class="btn ghost" style="margin-top:8px">try again</button>',
+    ].join("");
+  }
+  if (state.marketsState === "empty") {
+    return [
+      '<span class="hint">no market is open for trading right now. the venue runs six at a time — ',
+      "two assets in a 60s, a 300s and a 3600s window — so there are gaps.</span>",
+      '<button id="retry-markets" class="btn ghost" style="margin-top:8px">check again</button>',
+    ].join("");
+  }
+  return state.markets
+    .map((mk, i) => {
+      const on = state.allowed.has(mk.marketId);
+      return [
+        '<button data-mk="' + i + '" class="mk" aria-pressed="' + on + '">',
+        '<span style="line-height:1.5;min-width:0;overflow-wrap:anywhere;flex:1 1 auto">' + esc(mk.label) + "</span>",
+        '<span style="font-size:11px;flex:0 0 auto;color:' + (on ? "var(--accent)" : "var(--dimmer)") + '">' + (on ? "on" : "off") + "</span>",
+        "</button>",
+      ].join("");
+    })
+    .join("");
+}
 
+export function limitsScreen(): string {
   return [
     '<div class="screen" style="gap:20px">',
     '<span class="eyebrow">03 / the leash</span>',
-    slider("s-budget", "total_budget", state.budget, 100, 2000, 50, "the most that can ever be pulled from your wallet, across the whole delegation."),
-    slider("s-order", "max_per_order", state.maxOrder, 10, 200, 5, "caps one bad decision. checked before the pull, in the same transaction."),
-    '<div class="sep" style="display:flex;flex-direction:column;gap:10px">',
+    slider("s-budget", "total_budget", state.budget, 100, 2000, 50, "the most that can ever be pulled from your wallet, across the whole delegation.", "tUSDC"),
+    slider("s-order", "max_per_order", state.maxOrder, 10, 200, 5, "caps one bad decision. checked before the pull, in the same transaction.", "tUSDC"),
+    '<div class="sep" style="display:flex;flex-direction:column;gap:10px;min-width:0">',
     '<div class="rowline"><span style="font-size:13px">allowed_markets</span>',
-    '<span style="font-size:12px;color:var(--dimmer)">' + state.allowed.size + "/" + mkts.length + "</span></div>",
-    '<div style="display:flex;flex-direction:column;gap:5px">' + rows + "</div>",
+    '<span style="font-size:12px;color:var(--dimmer)">' + state.allowed.size + "/" + state.markets.length + "</span></div>",
+    '<div style="display:flex;flex-direction:column;gap:5px;min-width:0">' + marketList() + "</div>",
     '<span class="hint">markets are read from chain, keyed by marketId. pools are recycled between windows, so a pool address would silently start governing a different market.</span>',
     "</div>",
-    slider("s-days", "expires_in_days", state.days, 1, 30, 1, "the delegation dies on its own. no transaction required to end it."),
+    slider("s-days", "expires_in_days", state.days, 1, 30, 1, "the delegation dies on its own. no transaction required to end it.", "days"),
     err(),
     '<button id="d-review" class="btn">review &rarr;</button>',
     "</div>",
@@ -160,13 +206,34 @@ export function limitsScreen(): string {
 }
 
 export function bindLimits(): void {
-  const bindRange = (id: string, key: "budget" | "maxOrder" | "days") => {
+  // Bound HERE, where the button exists. It was wired at module load in app.ts,
+  // before the screen had ever rendered, so it silently did nothing — a dead
+  // control on the one screen whose job is to recover from a failed read.
+  document.getElementById("retry-markets")?.addEventListener("click", () => {
+    void reloadMarkets();
+  });
+
+  /**
+   * Updates the readout NODE rather than calling set().
+   *
+   * set() replaces the whole screen's innerHTML, which destroyed the range
+   * input on every `input` event — the drag ended after one step and keyboard
+   * stepping was impossible. State is written directly; nothing else on screen
+   * depends on it until the user moves on.
+   */
+  const bindRange = (id: string, key: "budget" | "maxOrder" | "days", unit: string) => {
     const el = document.getElementById(id) as HTMLInputElement | null;
-    el?.addEventListener("input", () => set({ [key]: Number(el.value) } as never));
+    const out = document.getElementById(id + "-out");
+    el?.addEventListener("input", () => {
+      const v = Number(el.value);
+      (state as unknown as Record<string, number>)[key] = v;
+      if (out) out.textContent = String(v);
+      el.setAttribute("aria-valuetext", `${v} ${unit}`);
+    });
   };
-  bindRange("s-budget", "budget");
-  bindRange("s-order", "maxOrder");
-  bindRange("s-days", "days");
+  bindRange("s-budget", "budget", "tUSDC");
+  bindRange("s-order", "maxOrder", "tUSDC");
+  bindRange("s-days", "days", "days");
 
   document.querySelectorAll<HTMLButtonElement>(".mk").forEach((b) => {
     b.addEventListener("click", () => {
@@ -175,7 +242,7 @@ export function bindLimits(): void {
       const next = new Set(state.allowed);
       if (next.has(mk.marketId)) next.delete(mk.marketId);
       else next.add(mk.marketId);
-      set({ allowed: next });
+      set({ allowed: next, error: "" });
     });
   });
 
@@ -194,7 +261,7 @@ function row(k: string, v: string): string {
   return [
     '<div class="rowline" style="padding:7px 0;border-top:1px solid var(--rule)">',
     '<span style="font-size:12px;color:var(--dimmer)">' + k + "</span>",
-    '<span style="font-size:13px">' + esc(v) + "</span></div>",
+    '<span style="font-size:13px;min-width:0;overflow-wrap:anywhere">' + esc(v) + "</span></div>",
   ].join("");
 }
 
@@ -215,7 +282,7 @@ export function reviewScreen(): string {
       " tUSDC <b>from this wallet</b>, and writes the limits on chain. the money does not move now.</p>",
     err(),
     '<button id="d-sign" class="btn accent"' + (state.busy ? " disabled" : "") + ">" +
-      (state.busy ? "signing…" : "approve + create mandate") + "</button>",
+      (state.busy ? "waiting…" : "approve + create mandate") + "</button>",
     '<div style="font-size:11.5px;color:var(--dimmer);word-break:break-all">' + logHtml() + "</div>",
     "</div>",
   ].join("");
@@ -228,6 +295,8 @@ export function bindReview(): void {
       return;
     }
     set({ busy: true, error: "" });
+    const label = document.getElementById("d-sign");
+    const say = (t: string) => { if (label) label.textContent = t; };
     try {
       const w = wallet(state.account);
       const budgetRaw = BigInt(state.budget) * 1_000_000n;
@@ -240,6 +309,7 @@ export function bindReview(): void {
         args: [state.account, REGISTRY as Address],
       })) as bigint;
       if (allowance < budgetRaw) {
+        say("approve in your wallet…");
         const h = await w.writeContract({
           address: COLLATERAL, abi: erc20Abi, functionName: "approve",
           args: [REGISTRY as Address, budgetRaw],
@@ -247,7 +317,7 @@ export function bindReview(): void {
         state.log.unshift({
           html: 'approve · <a href="' + txUrl(h) + '" target="_blank" rel="noreferrer">' + h.slice(0, 12) + "…</a>",
         });
-        set({});
+        say("waiting for the approve to confirm…");
         await pub.waitForTransactionReceipt({ hash: h });
       }
 
@@ -257,6 +327,7 @@ export function bindReview(): void {
         address: REGISTRY as Address, abi: registryAbi, functionName: "nextMandateId",
       })) as bigint;
 
+      say("sign the mandate in your wallet…");
       const hash = await w.writeContract({
         address: REGISTRY as Address, abi: registryAbi, functionName: "createMandate",
         args: [state.delegate as Address, orderRaw, budgetRaw, expiry, ids],
@@ -264,17 +335,92 @@ export function bindReview(): void {
       state.log.unshift({
         html: 'mandate · <a href="' + txUrl(hash) + '" target="_blank" rel="noreferrer">' + hash.slice(0, 12) + "…</a>",
       });
-      set({});
+      say("waiting for confirmation…");
       const r = await pub.waitForTransactionReceipt({ hash });
       if (r.status !== "success") throw new Error("mandate transaction reverted");
-      set({ busy: false, mandateId: next, screen: "monitor" });
+      set({ busy: false, mandateId: next, screen: "issue" });
     } catch (e) {
       set({ busy: false, error: errName(e) });
     }
   });
 }
 
-// ---- 05 monitor ----------------------------------------------------------
+// ---- 05 issue ------------------------------------------------------------
+
+/** The link the delegate opens. Same origin, so it works wherever this is served. */
+export function delegateLink(): string {
+  const base = globalThis.location?.origin ?? "";
+  const path = globalThis.location?.pathname?.includes("app") ? globalThis.location.pathname : "/app.html";
+  return `${base}${path}?role=delegate&m=${state.mandateId ?? ""}`;
+}
+
+export function issueScreen(): string {
+  if (!state.mandateId) {
+    return [
+      '<div class="screen">',
+      '<span class="eyebrow">05 / issue</span>',
+      '<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">nothing to hand over yet</h2>',
+      '<p class="body" style="margin:0">create a mandate first — step 04 — and the link and code appear here.</p>',
+      err(),
+      "</div>",
+    ].join("");
+  }
+  const url = delegateLink();
+  let qr = "";
+  try {
+    qr = qrSvg(url, 190);
+  } catch {
+    qr = '<span class="hint">the link is too long to encode as a code — use copy instead.</span>';
+  }
+  return [
+    '<div class="screen">',
+    '<span class="eyebrow">05 / issue</span>',
+    '<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">hand it to them</h2>',
+    '<p class="body" style="margin:0">mandate <b>#' + String(state.mandateId) + '</b>. they scan this, or open the link. it carries no key and no permission by itself — the limits live on chain.</p>',
+    '<div style="background:#fff;padding:12px;align-self:flex-start;line-height:0">' + qr + "</div>",
+    '<div style="display:flex;flex-direction:column;gap:8px;min-width:0">',
+    '<span class="eyebrow" style="letter-spacing:0.12em">delegate_link</span>',
+    '<code id="d-link" style="font-size:11px;color:var(--dim);overflow-wrap:anywhere;min-width:0">' + esc(url) + "</code>",
+    '<button id="d-copy" class="btn ghost">copy link</button>',
+    "</div>",
+    err(),
+    '<button id="d-tomonitor" class="btn">watch it &rarr;</button>',
+    "</div>",
+  ].join("");
+}
+
+export function bindIssue(): void {
+  document.getElementById("d-copy")?.addEventListener("click", async () => {
+    const url = delegateLink();
+    const btn = document.getElementById("d-copy");
+    const restore = (t: string) => {
+      if (!btn) return;
+      btn.textContent = t;
+      // Always put the label back. A control that keeps the last outcome as its
+      // name has stopped telling you what it does.
+      setTimeout(() => { btn.textContent = "copy link"; }, 2000);
+    };
+    try {
+      await navigator.clipboard.writeText(url);
+      restore("copied");
+    } catch {
+      // Clipboard is blocked without a secure context or a user gesture in some
+      // browsers. Select the text so it can still be copied by hand.
+      const el = document.getElementById("d-link");
+      if (el) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const sel = getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      }
+      restore("selected — press copy");
+    }
+  });
+  document.getElementById("d-tomonitor")?.addEventListener("click", () => go("monitor"));
+}
+
+// ---- 06 monitor ----------------------------------------------------------
 
 export interface MonitorData {
   m: readonly [Address, Address, bigint, bigint, bigint, bigint, boolean, boolean];
@@ -309,11 +455,32 @@ export function freshnessLine(): string {
 }
 
 export function monitorScreen(d: MonitorData | null): string {
+  if (state.mandateParamError) {
+    return [
+      '<div class="screen">',
+      '<span class="eyebrow">06 / monitor</span>',
+      '<p role="alert" class="body" style="margin:0;color:var(--accent)">' + esc(state.mandateParamError) + "</p>",
+      "</div>",
+    ].join("");
+  }
   if (!state.mandateId) {
-    return '<div class="screen"><span class="eyebrow">05 / monitor</span><p class="body" style="margin:0">no mandate yet. create one above, or open this page with <code>?m=</code> set.</p></div>';
+    return [
+      '<div class="screen">',
+      '<span class="eyebrow">06 / monitor</span>',
+      '<p class="body" style="margin:0">no mandate yet. create one in steps 02–04, and this screen reads it back from the contract.</p>',
+      err(),
+      "</div>",
+    ].join("");
   }
   if (!d) {
-    return '<div class="screen"><span class="eyebrow">05 / monitor</span><p class="hint">reading chain…</p></div>';
+    return [
+      '<div class="screen">',
+      '<span class="eyebrow">06 / monitor</span>',
+      '<p class="body" style="margin:0">reading mandate #' + String(state.mandateId) + " from the contract…</p>",
+      freshnessLine(),
+      err(),
+      "</div>",
+    ].join("");
   }
   const delegate = d.m[1];
   const perTrade = d.m[2];
@@ -328,7 +495,7 @@ export function monitorScreen(d: MonitorData | null): string {
 
   return [
     '<div class="screen">',
-    '<div class="rowline"><span class="eyebrow">05 / monitor</span>',
+    '<div class="rowline"><span class="eyebrow">06 / monitor</span>',
     '<span style="font-size:11px;color:' + (live ? "var(--accent)" : "var(--dimmer)") + '">' + status + "</span></div>",
     '<div style="display:flex;flex-direction:column;gap:8px">',
     '<div class="rowline"><span style="font-size:12px;color:var(--dimmer)">allowance_remaining</span>',
@@ -337,6 +504,7 @@ export function monitorScreen(d: MonitorData | null): string {
     '<span class="hint">' + fmt(used) + " of " + fmt(cap) + " spent · max " + fmt(perTrade) + " per order</span>",
     "</div>",
     '<div style="display:flex;flex-direction:column">',
+    row("mandate_id", "#" + String(state.mandateId)),
     row("trading_for", short(delegate)),
     row("expires_in", secs > 0 ? Math.floor(secs / 3600) + "h " + Math.floor((secs % 3600) / 60) + "m" : "expired"),
     "</div>",
@@ -344,30 +512,35 @@ export function monitorScreen(d: MonitorData | null): string {
     '<span style="font-size:12px;color:var(--dimmer)">held_by_registry</span>',
     '<span style="font-size:12.5px;color:' + (d.clean ? "var(--ink)" : "var(--accent)") + '">' +
       fmt(d.held) + (d.clean ? "" : " UNATTRIBUTED") + "</span></div>",
-    // The claim is conditional on the read having happened. It used to be
-    // unconditional, and stayed on screen unchanged through every failed poll.
     freshnessLine(),
     '<p class="body" style="margin:0">the registry holds nothing that is not owed to a named party.</p>',
-    '<button id="d-torevoke" class="btn ghost">ending it &rarr;</button>',
+    err(),
+    '<div style="display:flex;gap:7px"><button id="d-toissue" class="btn ghost">the link &rarr;</button>',
+    '<button id="d-torevoke" class="btn ghost">ending it &rarr;</button></div>',
     "</div>",
   ].join("");
 }
 
 export function bindMonitor(): void {
-  document.getElementById("d-torevoke")?.addEventListener("click", () => set({ screen: "revoke" }));
+  document.getElementById("d-torevoke")?.addEventListener("click", () => go("revoke"));
+  document.getElementById("d-toissue")?.addEventListener("click", () => go("issue"));
 }
 
-// ---- 06 revoke -----------------------------------------------------------
+// ---- 07 revoke -----------------------------------------------------------
 
 export function revokeScreen(): string {
+  const blocked = !state.account ? "connect your wallet to revoke — only the delegator can."
+    : !state.mandateId ? "no mandate to revoke."
+    : "";
   return [
     '<div class="screen">',
-    '<span class="eyebrow">06 / revoke</span>',
+    '<span class="eyebrow">07 / revoke</span>',
     '<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">ending it</h2>',
     '<p class="body" style="margin:0">one transaction, no counterparty. the delegate cannot stop it, cannot delay it, and does not need to agree. their next order reverts.</p>',
     '<p class="body" style="margin:0">you can also revoke the ERC-20 allowance from your wallet. either alone is enough.</p>',
+    blocked ? '<span class="hint">' + blocked + "</span>" : "",
     err(),
-    '<button id="d-revoke" class="btn accent"' + (state.busy || !state.mandateId ? " disabled" : "") + ">" +
+    '<button id="d-revoke" class="btn accent"' + (state.busy || blocked ? " disabled" : "") + ">" +
       (state.busy ? "revoking…" : "revoke and withdraw") + "</button>",
     '<div style="font-size:11.5px;color:var(--dimmer);word-break:break-all">' + logHtml() + "</div>",
     "</div>",
@@ -376,8 +549,13 @@ export function revokeScreen(): string {
 
 export function bindRevoke(): void {
   document.getElementById("d-revoke")?.addEventListener("click", async () => {
-    if (!state.account || !state.mandateId) return;
+    // The button is disabled in exactly these cases, so this is belt and
+    // braces — but it reports rather than returning silently, which is what it
+    // used to do while looking perfectly clickable.
+    if (!state.account) { set({ error: "connect your wallet first" }); return; }
+    if (!state.mandateId) { set({ error: "no mandate to revoke" }); return; }
     set({ busy: true, error: "" });
+    const label = document.getElementById("d-revoke");
     try {
       const hash = await wallet(state.account).writeContract({
         address: REGISTRY as Address, abi: registryAbi, functionName: "revoke", args: [state.mandateId],
@@ -385,7 +563,7 @@ export function bindRevoke(): void {
       state.log.unshift({
         html: 'revoke · <a href="' + txUrl(hash) + '" target="_blank" rel="noreferrer">' + hash.slice(0, 12) + "…</a>",
       });
-      set({});
+      if (label) label.textContent = "waiting for confirmation…";
       await pub.waitForTransactionReceipt({ hash });
       set({ busy: false, screen: "monitor" });
     } catch (e) {

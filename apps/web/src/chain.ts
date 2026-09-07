@@ -46,6 +46,8 @@ export const registryAbi = parseAbi([
   "function nextMandateId() view returns (uint256)",
   "function allowedMarket(uint256, bytes32) view returns (bool)",
   "function holdsNoFunds() view returns (bool)",
+  "function unattributed() view returns (uint256)",
+  "function refundClaim(uint256) view returns (uint256)",
   "error NotDelegator()",
   "error NotDelegate()",
   "error Revoked()",
@@ -53,6 +55,13 @@ export const registryAbi = parseAbi([
   "error MarketNotAllowed()",
   "error StakeExceedsPerTrade(uint256 cost, uint128 limit)",
   "error ExceedsCumulative(uint256 wouldBe, uint128 limit)",
+]);
+
+/** Read-only handler surface, for the desktop context column. */
+export const handlerAbi = parseAbi([
+  "function batchCap() view returns (uint256)",
+  "function subscriptionId() view returns (uint256)",
+  "function marketsSettled() view returns (uint256)",
 ]);
 
 export const erc20Abi = parseAbi([

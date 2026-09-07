@@ -11,17 +11,15 @@
  * mandate figures beside it are read from the contract.
  */
 import {
-  pub, wallet, connect, addNetwork, onRightChain, registryAbi,
-  REGISTRY, txUrl, fmt, errName,
+  pub, wallet, registryAbi, REGISTRY, txUrl, fmt, errName,
 } from "../chain.js";
-import { state, set, staleness } from "../state.js";
+import { state, set, go, staleness } from "../state.js";
+import { err } from "./delegator.js";
 import type { MonitorData } from "./delegator.js";
 import type { Address, Hex } from "viem";
 
 const esc = (s: string) =>
   s.replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" }[c] as string));
-const err = () =>
-  state.error ? '<span style="font-size:12px;color:var(--accent)">' + esc(state.error) + "</span>" : "";
 
 /** UP is BUY_YES (0), DOWN is BUY_NO (2). `price` is always the YES-side price. */
 const KIND = { up: 0, down: 2 } as const;
@@ -41,8 +39,30 @@ function refusal(name: string): string {
   return name;
 }
 
+/**
+ * The mandate envelope, or an honest account of why there isn't one.
+ *
+ * `reading the mandate…` used to sit here permanently for any delegate who
+ * arrived without a link, because the read is gated on having a mandate id and
+ * therefore never ran. It was the app's primary demo screen saying it was busy
+ * while nothing was happening.
+ */
 function envelope(d: MonitorData | null): string {
-  if (!d) return '<div class="sep"><span class="hint">reading the mandate…</span></div>';
+  if (state.mandateParamError) {
+    return '<div class="sep"><span role="alert" style="font-size:12px;color:var(--accent);overflow-wrap:anywhere">' +
+      esc(state.mandateParamError) + "</span></div>";
+  }
+  if (!state.mandateId) {
+    return [
+      '<div class="sep" style="display:flex;flex-direction:column;gap:8px">',
+      '<span style="font-size:13px">no mandate on this link.</span>',
+      '<span class="hint">a delegate is invited. ask the delegator for their link — it ends in <code>?role=delegate&amp;m=…</code> and they can copy it or show you a code from their issue screen.</span>',
+      "</div>",
+    ].join("");
+  }
+  if (!d) {
+    return '<div class="sep"><span class="hint">reading mandate #' + String(state.mandateId) + " from the contract…</span></div>";
+  }
   const cap = d.m[3];
   const used = d.m[4];
   const perTrade = d.m[2];
@@ -51,8 +71,7 @@ function envelope(d: MonitorData | null): string {
   const live = !revoked && BigInt(Math.floor(Date.now() / 1000)) < expiry;
   const pct = cap === 0n ? 0 : Number((d.remaining * 100n) / cap);
   // A budget figure that quietly stopped updating is worse than no figure: the
-  // delegate reads headroom that may already be spent. Polls fail, so the
-  // envelope carries its own age.
+  // delegate reads headroom that may already be spent.
   const f = staleness();
   return [
     '<div style="display:flex;flex-direction:column;gap:8px">',
@@ -70,37 +89,63 @@ function envelope(d: MonitorData | null): string {
   ].join("");
 }
 
+/** Markets the delegate can act on, with the same four honest outcomes. */
+function marketPicker(): string {
+  if (state.marketsState === "loading") return '<span class="hint">reading live markets from chain…</span>';
+  if (state.marketsState === "failed") {
+    return '<span role="alert" style="font-size:12px;color:var(--accent);overflow-wrap:anywhere">' +
+      esc(state.marketsError || "market discovery failed.") + "</span>";
+  }
+  if (state.marketsState === "empty") {
+    return '<span class="hint">no market is open right now — the venue runs six at a time and there are gaps between windows.</span>';
+  }
+  return state.markets
+    .map((mk, i) => {
+      const on = i === state.activeMarket;
+      return [
+        '<button data-pick="' + i + '" class="mk" aria-pressed="' + on + '">',
+        '<span style="line-height:1.5;min-width:0;overflow-wrap:anywhere;flex:1 1 auto">' + esc(mk.label) + "</span>",
+        '<span style="font-size:11px;flex:0 0 auto;color:' + (on ? "var(--accent)" : "var(--dimmer)") + '">' + (on ? "trading" : "pick") + "</span>",
+        "</button>",
+      ].join("");
+    })
+    .join("");
+}
+
 // ---- 01 place order ------------------------------------------------------
 
 export function tradeScreen(d: MonitorData | null): string {
   const mk = state.markets[state.activeMarket];
   const sideBtn = (k: "up" | "down", label: string, color: string) =>
-    '<button data-side="' + k + '" class="side btn" style="background:' +
+    '<button data-side="' + k + '" class="side btn" aria-pressed="' + (state.side === k) + '" style="background:' +
     (state.side === k ? color : "none") + ";color:" + (state.side === k ? "#0f0f0f" : "var(--dim)") +
-    ";border:1px solid " + (state.side === k ? color : "var(--rule2)") + '">' + label + "</button>";
+    ";border:1px solid " + (state.side === k ? color : "var(--rule2)") + '">' + label +
+    (state.side === k ? " ✓" : "") + "</button>";
 
   return [
     '<div class="screen">',
     '<span class="eyebrow">01 / place_order</span>',
     envelope(d),
-    '<div class="sep" style="display:flex;flex-direction:column;gap:9px">',
+    '<div class="sep" style="display:flex;flex-direction:column;gap:9px;min-width:0">',
     '<span class="eyebrow" style="letter-spacing:0.12em">market</span>',
-    '<span style="font-size:13px;line-height:1.5">' + (mk ? esc(mk.label) : "no market selected") + "</span>",
+    '<div style="display:flex;flex-direction:column;gap:5px;min-width:0">' + marketPicker() + "</div>",
     mk ? '<button id="t-detail" class="btn ghost">market_detail &rarr;</button>' : "",
     "</div>",
     '<div class="sep" style="display:flex;flex-direction:column;gap:10px">',
-    '<span class="eyebrow" style="letter-spacing:0.12em">side</span>',
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">',
+    '<span class="eyebrow" style="letter-spacing:0.12em" id="side-label">side</span>',
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px" role="group" aria-labelledby="side-label">',
     sideBtn("up", "UP", "#2ea043"),
     sideBtn("down", "DOWN", "var(--accent)"),
     "</div></div>",
-    '<div class="sep" style="display:flex;flex-direction:column;gap:10px">',
-    '<div class="rowline"><span style="font-size:13px">size</span><span style="font-size:19px;letter-spacing:-0.03em">' + state.size + "</span></div>",
-    '<input id="t-size" type="range" min="1" max="200" step="1" value="' + state.size + '" style="width:100%" />',
-    '<span class="hint">checked against the per-order cap before anything is pulled.</span>',
+    '<div class="sep" style="display:flex;flex-direction:column;gap:10px;min-width:0">',
+    '<div class="rowline"><label for="t-size" style="font-size:13px">size</label>',
+    '<span id="t-size-out" style="font-size:19px;letter-spacing:-0.03em">' + state.size + "</span></div>",
+    '<input id="t-size" type="range" min="1" max="200" step="1" value="' + state.size +
+      '" style="width:100%" aria-valuetext="' + state.size + ' units" aria-describedby="t-size-note" />',
+    '<span class="hint" id="t-size-note">checked against the per-order cap before anything is pulled.</span>',
     "</div>",
     err(),
-    '<button id="t-place" class="btn accent"' + (state.busy || !mk ? " disabled" : "") + ">" +
+    '<button id="t-place" class="btn accent"' + (state.busy || !mk || !state.mandateId ? " disabled" : "") + ">" +
       (state.busy ? "placing…" : "place order") + "</button>",
     '<div style="font-size:11.5px;color:var(--dimmer);word-break:break-all">' +
       state.log.map((l) => '<div style="padding:6px 0;border-top:1px solid var(--rule)">' + l.html + "</div>").join("") +
@@ -111,21 +156,38 @@ export function tradeScreen(d: MonitorData | null): string {
 
 export function bindTrade(): void {
   document.querySelectorAll<HTMLButtonElement>(".side").forEach((b) => {
-    b.addEventListener("click", () => set({ side: b.dataset.side as "up" | "down" }));
+    b.addEventListener("click", () => set({ side: b.dataset.side as "up" | "down", error: "" }));
   });
+  document.querySelectorAll<HTMLButtonElement>("[data-pick]").forEach((b) => {
+    b.addEventListener("click", () => set({ activeMarket: Number(b.dataset.pick), error: "" }));
+  });
+
+  // Updates the readout node, not the whole screen — a set() here destroyed the
+  // range input mid-drag.
   const sz = document.getElementById("t-size") as HTMLInputElement | null;
-  sz?.addEventListener("input", () => set({ size: Number(sz.value) }));
-  document.getElementById("t-detail")?.addEventListener("click", () => set({ screen: "market" }));
+  const out = document.getElementById("t-size-out");
+  sz?.addEventListener("input", () => {
+    state.size = Number(sz.value);
+    if (out) out.textContent = sz.value;
+    sz.setAttribute("aria-valuetext", `${sz.value} units`);
+    // Clear a stale refusal directly: the user adjusting size is answering it,
+    // and leaving "bigger than the per-order cap" on screen contradicts them.
+    if (state.error) {
+      state.error = "";
+      document.querySelectorAll('[role="alert"]').forEach((n) => { n.textContent = ""; });
+    }
+  });
+  document.getElementById("t-detail")?.addEventListener("click", () => go("market"));
 
   document.getElementById("t-place")?.addEventListener("click", async () => {
     const mk = state.markets[state.activeMarket];
-    if (!state.account || !mk || !state.mandateId) {
-      set({ error: "connect, and open a mandate link first" });
-      return;
-    }
+    if (!state.mandateId) { set({ error: "open the delegator's link first — it carries the mandate id" }); return; }
+    if (!mk) { set({ error: "no market selected" }); return; }
+    if (!state.account) { set({ error: "connect your wallet to place an order" }); return; }
     set({ busy: true, error: "" });
+    const label = document.getElementById("t-place");
     try {
-      if (!(await onRightChain())) await addNetwork();
+      if (!(await onRightChainSafe())) await ensureNetwork();
 
       // Price to the top of the range. A taker is charged the FILL price, not
       // the price it offered, so aggression costs nothing and removes the
@@ -139,11 +201,13 @@ export function bindTrade(): void {
 
       // Simulate first: placeBinaryOrder returns (success, id) and a false does
       // NOT revert, so a mined transaction can be a silent rejection.
+      if (label) label.textContent = "checking against your limits…";
       await pub.simulateContract({
         account: state.account, address: REGISTRY as Address, abi: registryAbi,
         functionName: "placeForDelegator", args: args as never,
       });
 
+      if (label) label.textContent = "sign in your wallet…";
       const hash = await wallet(state.account).writeContract({
         address: REGISTRY as Address, abi: registryAbi,
         functionName: "placeForDelegator", args: args as never,
@@ -151,7 +215,7 @@ export function bindTrade(): void {
       state.log.unshift({
         html: state.side.toUpperCase() + ' sent · <a href="' + txUrl(hash) + '" target="_blank" rel="noreferrer">' + hash.slice(0, 12) + "…</a>",
       });
-      set({});
+      if (label) label.textContent = "waiting for confirmation…";
       const r = await pub.waitForTransactionReceipt({ hash });
       state.log.unshift({
         html: state.side.toUpperCase() + " <b>" + (r.status === "success" ? "placed" : "reverted") +
@@ -164,6 +228,16 @@ export function bindTrade(): void {
   });
 }
 
+// Imported lazily to keep the wallet plumbing in one place.
+async function onRightChainSafe(): Promise<boolean> {
+  const { onRightChain } = await import("../chain.js");
+  try { return await onRightChain(); } catch { return false; }
+}
+async function ensureNetwork(): Promise<void> {
+  const { addNetwork } = await import("../chain.js");
+  await addNetwork();
+}
+
 // ---- 02 market detail ----------------------------------------------------
 
 /**
@@ -174,7 +248,7 @@ function spark(): string {
   const pr = [118, 110, 124, 96, 88, 104, 72, 78, 60, 66, 48, 40];
   const pts = pr.map((y, i) => (i * 320) / (pr.length - 1) + "," + y).join(" ");
   return [
-    '<svg viewBox="0 0 320 130" preserveAspectRatio="none" style="width:100%;height:110px;display:block">',
+    '<svg viewBox="0 0 320 130" preserveAspectRatio="none" style="width:100%;height:110px;display:block" aria-hidden="true">',
     '<polyline points="' + pts + '" fill="none" stroke="var(--accent)" stroke-width="1.5" />',
     "</svg>",
   ].join("");
@@ -182,7 +256,15 @@ function spark(): string {
 
 export function marketScreen(d: MonitorData | null): string {
   const mk = state.markets[state.activeMarket];
-  if (!mk) return '<div class="screen"><span class="eyebrow">02 / market_detail</span><p class="hint">no market selected.</p></div>';
+  if (!mk) {
+    return [
+      '<div class="screen"><span class="eyebrow">02 / market_detail</span>',
+      '<p class="body" style="margin:0">no market selected.</p>',
+      '<div style="display:flex;flex-direction:column;gap:5px;min-width:0">' + marketPicker() + "</div>",
+      err(),
+      '<button id="m-back" class="btn ghost">&larr; place_order</button></div>',
+    ].join("");
+  }
   const secs = Number(mk.expiry) - Math.floor(Date.now() / 1000);
   // Before refreshMandate has checked the mandate on chain, `state.allowed` is
   // the DRAFT set — every discovered market — which would print "allowed" for a
@@ -191,7 +273,7 @@ export function marketScreen(d: MonitorData | null): string {
   return [
     '<div class="screen">',
     '<span class="eyebrow">02 / market_detail</span>',
-    '<h2 style="margin:0;font-size:17px;line-height:1.35;font-weight:500;letter-spacing:-0.03em">' + esc(mk.label) + "</h2>",
+    '<h2 style="margin:0;font-size:17px;line-height:1.35;font-weight:500;letter-spacing:-0.03em;min-width:0;overflow-wrap:anywhere">' + esc(mk.label) + "</h2>",
     spark(),
     '<span class="hint">indicative price line — not a mandate figure and not read from chain.</span>',
     '<div style="display:flex;flex-direction:column">',
@@ -202,13 +284,17 @@ export function marketScreen(d: MonitorData | null): string {
       (allowed === true ? "allowed" : allowed === false ? "not allowed" : "not checked yet") + "</span></div>",
     "</div>",
     envelope(d),
+    err(),
     '<button id="m-back" class="btn ghost">&larr; place_order</button>',
     "</div>",
   ].join("");
 }
 
 export function bindMarket(): void {
-  document.getElementById("m-back")?.addEventListener("click", () => set({ screen: "trade" }));
+  document.getElementById("m-back")?.addEventListener("click", () => go("trade"));
+  document.querySelectorAll<HTMLButtonElement>("[data-pick]").forEach((b) => {
+    b.addEventListener("click", () => set({ activeMarket: Number(b.dataset.pick), error: "" }));
+  });
 }
 
 // ---- 03 open positions ---------------------------------------------------
@@ -228,6 +314,11 @@ export function positionsScreen(d: MonitorData | null): string {
         state.log.map((l) => '<div style="padding:7px 0;border-top:1px solid var(--rule)">' + l.html + "</div>").join("") +
         "</div>",
     envelope(d),
+    err(),
     "</div>",
   ].join("");
+}
+
+export function bindPositions(): void {
+  /* nothing interactive here yet; present so the dispatcher is uniform */
 }

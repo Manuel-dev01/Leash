@@ -98,16 +98,35 @@ export async function discoverMarkets(
   const out: DiscoveredMarket[] = [];
   const seen = new Set<string>();
   let decodeFailures = 0;
+  let fetchFailures = 0;
 
+  // The windows are INDEPENDENT, so they go out together. Serially, ten
+  // 1000-block queries against a slow public RPC kept the app on "reading live
+  // markets from chain…" for tens of seconds before anything was clickable.
+  // Ordering is restored afterwards so results stay deterministic.
+  const ranges: { lo: bigint; hi: bigint }[] = [];
   for (let i = 0; i < windows; i++) {
     const hi = head - BigInt(i) * BigInt(NETWORK.maxGetLogsBlockRange);
     if (hi <= span) break;
-    const logs = await client.getLogs({
-      address: EC.binaryModule as Address,
-      fromBlock: hi - span,
-      toBlock: hi,
-      event: marketCreatedAbi[0],
-    });
+    ranges.push({ lo: hi - span, hi });
+  }
+  const pages = await Promise.all(
+    ranges.map((r) =>
+      client.getLogs({
+        address: EC.binaryModule as Address,
+        fromBlock: r.lo,
+        toBlock: r.hi,
+        event: marketCreatedAbi[0],
+      }).catch(() => {
+        // One failed window must not lose the other nine — but a FETCH failure
+        // is not a DECODE failure, and reporting it as one would diagnose an
+        // RPC outage as an event-shape change.
+        fetchFailures++;
+        return [] as Awaited<ReturnType<typeof client.getLogs>>;
+      }),
+    ),
+  );
+  for (const logs of pages) {
     for (const l of logs) {
       try {
         const d = decodeEventLog({ abi: marketCreatedAbi, data: l.data, topics: l.topics as never });
@@ -126,6 +145,12 @@ export async function discoverMarkets(
         decodeFailures++;
       }
     }
+  }
+  if (fetchFailures > 0 && out.length === 0) {
+    throw new Error(
+      `discoverMarkets: ${fetchFailures} of ${ranges.length} log windows failed to fetch and nothing ` +
+        "was found. This is the RPC — do not report it as an empty venue.",
+    );
   }
   if (decodeFailures > 0 && out.length === 0) {
     throw new Error(
@@ -187,23 +212,33 @@ export async function tradableMarketsDetailed(
     .filter((m) => m.expiry > now + headroom && m.tradingStart <= now)
     .sort((a, b) => Number(a.expiry - b.expiry)); // soonest first: most useful for a demo
 
-  for (const m of candidates) {
-    if (live.length >= limit || checked >= maxChecks) break;
-    checked++;
-    try {
-      const params = (await client.readContract({
-        address: m.pool, abi: binaryPoolParamsAbi, functionName: "getBinaryPoolParams",
-      })) as unknown as { market: Address; finalized: boolean };
-      if (params.finalized) continue;
-      if (params.market.toLowerCase() !== m.market.toLowerCase()) continue; // pool was recycled
-      const [resolved, voided] = await Promise.all([
-        client.readContract({ address: m.market, abi: binaryMarketReadAbi, functionName: "isResolved" }) as Promise<boolean>,
-        client.readContract({ address: m.market, abi: binaryMarketReadAbi, functionName: "isVoided" }) as Promise<boolean>,
-      ]);
-      if (resolved || voided) continue;
-      live.push(m);
-    } catch {
-      errors++; // counted, not hidden
+  /** One candidate, three reads. Returns null when it is not tradable. */
+  const inspect = async (m: DiscoveredMarket): Promise<DiscoveredMarket | null> => {
+    const params = (await client.readContract({
+      address: m.pool, abi: binaryPoolParamsAbi, functionName: "getBinaryPoolParams",
+    })) as unknown as { market: Address; finalized: boolean };
+    if (params.finalized) return null;
+    if (params.market.toLowerCase() !== m.market.toLowerCase()) return null; // pool was recycled
+    const [resolved, voided] = await Promise.all([
+      client.readContract({ address: m.market, abi: binaryMarketReadAbi, functionName: "isResolved" }) as Promise<boolean>,
+      client.readContract({ address: m.market, abi: binaryMarketReadAbi, functionName: "isVoided" }) as Promise<boolean>,
+    ]);
+    return resolved || voided ? null : m;
+  };
+
+  // Checked in BATCHES rather than one at a time. Serially this was up to three
+  // round-trips per candidate, all of them blocking the first usable render;
+  // the batch keeps the same bounds (`limit`, `maxChecks`) and the same error
+  // accounting, and preserves soonest-first ordering within each batch.
+  const BATCH = 6;
+  for (let i = 0; i < candidates.length && live.length < limit && checked < maxChecks; i += BATCH) {
+    const slice = candidates.slice(i, i + BATCH);
+    checked += slice.length;
+    const settled = await Promise.all(
+      slice.map((m) => inspect(m).catch(() => { errors++; return null; })),
+    );
+    for (const m of settled) {
+      if (m && live.length < limit) live.push(m);
     }
   }
   return { live, checked, errors };

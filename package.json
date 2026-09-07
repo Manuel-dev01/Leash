@@ -16,10 +16,14 @@
     "ready": "tsx scripts/ready.ts",
     "collect": "tsx scripts/collect.ts",
     "disarm": "tsx scripts/unwind-now.ts",
-    "rehearse": "tsx scripts/rehearse.ts"
+    "rehearse": "tsx scripts/rehearse.ts",
+    "sweep": "playwright test",
+    "sweep:desktop": "playwright test --project=desktop"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "dotenv": "^16.4.7",
+    "jsqr": "^1.4.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },

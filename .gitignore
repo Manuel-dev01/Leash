@@ -41,3 +41,4 @@ apps/web/dist/
 
 .vercel
 .scratch/
+.artifacts/

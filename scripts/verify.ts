@@ -765,6 +765,10 @@ async function main() {
         "holdsNoFunds() and unattributed(), both asserted live; claim registry-holds-no-funds"],
       ['<p class="body" style="margin:0">one transaction, no counterparty. the delegate cannot stop it, cannot delay it, and does not need to agree. their next order reverts.</p>',
         "revoke() is delegator-only and sets revoked=true; the delegate's next placeForDelegator reverts Revoked; claim delegate-cannot-bypass"],
+      ['<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">nothing to hand over yet</h2>',
+        "literal: state.mandateId is null, so there is no link to issue. Rendered only in that branch"],
+      ["connect your wallet to revoke — only the delegator can.",
+        "revoke() is delegator-gated on chain (NotDelegator); the button is disabled in this state too"],
       ['<p class="body" style="margin:0">you place these. they are not yours. every payout settles to',
         "_payRefund pays mandates[id].delegator only; claim no-unattributed-escrow"],
     ]);

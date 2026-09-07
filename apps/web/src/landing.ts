@@ -66,9 +66,20 @@ async function main() {
     $("deployed").textContent = "chain 50312 · registry not configured";
   }
 
-  $("addnet").addEventListener("click", async () => {
-    try { await addNetwork(); $("addnet").textContent = "network added"; }
-    catch (e) { $("addnet").textContent = errName(e); }
+  // The label ALWAYS comes back. Overwriting it permanently with the last error
+  // left the landing page's only call to action reading "No wallet found", with
+  // nothing to say it was still a button.
+  const addnet = $("addnet");
+  const addnetLabel = addnet.textContent ?? "add somnia 50312";
+  addnet.addEventListener("click", async () => {
+    addnet.textContent = "check your wallet…";
+    try {
+      await addNetwork();
+      addnet.textContent = "network added";
+    } catch (e) {
+      addnet.textContent = errName(e);
+    }
+    setTimeout(() => { addnet.textContent = addnetLabel; }, 2500);
   });
 
   // The headline stat. Read from chain, never hardcoded — the whole point of the

@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect width=%2732%27 height=%2732%27 fill=%27%230f0f0f%27/%3E%3Ctext x=%2716%27 y=%2723%27 font-family=%27monospace%27 font-size=%2722%27 font-weight=%27bold%27 fill=%27%23ff4d2e%27 text-anchor=%27middle%27%3EL%3C/text%3E%3C/svg%3E">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>leash</title>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -26,7 +27,7 @@
     <p style="margin:0;font-size:12px;line-height:1.85;color:var(--dimmer);text-wrap:pretty">two roles, one contract. the delegator's screens write the limits. the delegate's screens can only spend inside them.</p>
   </div>
 
-  <div style="flex:0 0 auto;display:flex;flex-direction:column;gap:10px">
+  <div style="display:flex;flex-direction:column;gap:10px;min-width:0">
     <div class="frame">
       <header>
         <span style="font-size:12px;font-weight:700;letter-spacing:-0.02em">leash</span>
@@ -34,8 +35,13 @@
       </header>
       <div class="scroll" id="screen"></div>
     </div>
-    <p style="margin:0;max-width:380px;font-size:11px;line-height:1.7;color:var(--dimmer)" id="why"></p>
+    <p style="margin:0;font-size:11px;line-height:1.7;color:var(--dimmer);min-width:0" id="why"></p>
   </div>
+
+  <aside class="context" id="context" aria-label="live contract state">
+    <span class="eyebrow">live from the deployed contracts</span>
+    <span class="hint">reading…</span>
+  </aside>
 
 </div>
 <script type="module" src="/src/app.ts"></script>
