@@ -11,7 +11,8 @@
  * mandate figures beside it are read from the contract.
  */
 import {
-  pub, wallet, registryAbi, REGISTRY, txUrl, fmt, errName,
+  pub, wallet, connect, addNetwork, onRightChain, registryAbi, REGISTRY,
+  txUrl, fmt, errName,
 } from "../chain.js";
 import { state, set, go, staleness } from "../state.js";
 import { err } from "./delegator.js";
@@ -126,6 +127,19 @@ export function tradeScreen(d: MonitorData | null): string {
     '<div class="screen">',
     '<span class="eyebrow">01 / place_order</span>',
     envelope(d),
+    // The delegate's role has no connect screen — their nav is only the three
+    // trading screens — so without this the wallet could ONLY be connected from
+    // the delegator tab. A delegate arriving by link hit "connect your wallet"
+    // with no button anywhere that did it.
+    !state.account
+      ? '<div class="sep" style="display:flex;flex-direction:column;gap:7px">' +
+        '<span class="eyebrow" style="letter-spacing:0.12em">your wallet</span>' +
+        '<button id="t-connect" class="btn"' + (state.busy ? " disabled" : "") + ">" +
+        (state.busy ? "waiting for your wallet…" : "connect wallet") + "</button>" +
+        '<span class="hint">you sign your own orders. the delegator never sees your key, and you never see theirs.</span>' +
+        "</div>"
+      : '<div class="sep rowline"><span style="font-size:12px;color:var(--dimmer)">trading as</span>' +
+        '<span style="font-size:12.5px">' + state.account.slice(0, 6) + "…" + state.account.slice(-4) + "</span></div>",
     '<div class="sep" style="display:flex;flex-direction:column;gap:9px;min-width:0">',
     '<span class="eyebrow" style="letter-spacing:0.12em">market</span>',
     '<div style="display:flex;flex-direction:column;gap:5px;min-width:0">' + marketPicker() + "</div>",
@@ -145,7 +159,7 @@ export function tradeScreen(d: MonitorData | null): string {
     '<span class="hint" id="t-size-note">checked against the per-order cap before anything is pulled.</span>',
     "</div>",
     err(),
-    '<button id="t-place" class="btn accent"' + (state.busy || !mk || !state.mandateId ? " disabled" : "") + ">" +
+    '<button id="t-place" class="btn accent"' + (state.busy || !mk || !state.mandateId || !state.account ? " disabled" : "") + ">" +
       (state.busy ? "placing…" : "place order") + "</button>",
     '<div style="font-size:11.5px;color:var(--dimmer);word-break:break-all">' +
       state.log.map((l) => '<div style="padding:6px 0;border-top:1px solid var(--rule)">' + l.html + "</div>").join("") +
@@ -155,6 +169,16 @@ export function tradeScreen(d: MonitorData | null): string {
 }
 
 export function bindTrade(): void {
+  document.getElementById("t-connect")?.addEventListener("click", async () => {
+    set({ busy: true, error: "" });
+    try {
+      const a = await connect();
+      if (!(await onRightChain())) await addNetwork();
+      set({ account: a, onChain: await onRightChain(), busy: false, error: "" });
+    } catch (e) {
+      set({ busy: false, error: errName(e) });
+    }
+  });
   document.querySelectorAll<HTMLButtonElement>(".side").forEach((b) => {
     b.addEventListener("click", () => set({ side: b.dataset.side as "up" | "down", error: "" }));
   });

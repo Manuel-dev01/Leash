@@ -322,3 +322,24 @@ test.describe("handoff", () => {
     await shot(page, "delegate-with-mandate", info.project.name);
   });
 });
+
+test.describe("delegate can act without the delegator's screens", () => {
+  test("a delegate connects from their own role", async ({ page }, info) => {
+    // The delegate's nav has no connect screen. Before this, the ONLY connect
+    // control lived on the delegator tab, so a delegate arriving by link could
+    // never sign anything without pretending to be the delegator first.
+    await injectWallet(page, DELEGATE);
+    await page.goto("/app.html?role=delegate&m=61");
+    await page.waitForTimeout(6_000);
+
+    const connect = page.locator("#t-connect");
+    await expect(connect, "no connect control on the delegate's own screen").toHaveCount(1);
+    await connect.click();
+    await page.waitForTimeout(1_500);
+
+    // Still in the delegate role, now with an account, and the ticket is live.
+    await expect(page.locator("#tab-delegate")).toHaveClass(/on/);
+    await expect(page.locator("#screen")).toContainText(/trading as/i);
+    await shot(page, "delegate-connected", info.project.name);
+  });
+});
