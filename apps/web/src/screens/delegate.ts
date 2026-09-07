@@ -14,7 +14,7 @@ import {
   pub, wallet, connect, addNetwork, onRightChain, registryAbi, REGISTRY,
   txUrl, fmt, errName,
 } from "../chain.js";
-import { state, set, go, staleness } from "../state.js";
+import { state, set, staleness } from "../state.js";
 import { err } from "./delegator.js";
 import type { MonitorData } from "./delegator.js";
 import type { Address, Hex } from "viem";
@@ -143,7 +143,6 @@ export function tradeScreen(d: MonitorData | null): string {
     '<div class="sep" style="display:flex;flex-direction:column;gap:9px;min-width:0">',
     '<span class="eyebrow" style="letter-spacing:0.12em">market</span>',
     '<div style="display:flex;flex-direction:column;gap:5px;min-width:0">' + marketPicker() + "</div>",
-    mk ? '<button id="t-detail" class="btn ghost">market_detail &rarr;</button>' : "",
     "</div>",
     '<div class="sep" style="display:flex;flex-direction:column;gap:10px">',
     '<span class="eyebrow" style="letter-spacing:0.12em" id="side-label">side</span>',
@@ -161,9 +160,8 @@ export function tradeScreen(d: MonitorData | null): string {
     err(),
     '<button id="t-place" class="btn accent"' + (state.busy || !mk || !state.mandateId || !state.account ? " disabled" : "") + ">" +
       (state.busy ? "placing…" : "place order") + "</button>",
-    '<div style="font-size:11.5px;color:var(--dimmer);word-break:break-all">' +
-      state.log.map((l) => '<div style="padding:6px 0;border-top:1px solid var(--rule)">' + l.html + "</div>").join("") +
-      "</div>",
+    marketDetail(),
+    ordersDetail(d),
     "</div>",
   ].join("");
 }
@@ -201,7 +199,6 @@ export function bindTrade(): void {
       document.querySelectorAll('[role="alert"]').forEach((n) => { n.textContent = ""; });
     }
   });
-  document.getElementById("t-detail")?.addEventListener("click", () => go("market"));
 
   document.getElementById("t-place")?.addEventListener("click", async () => {
     const mk = state.markets[state.activeMarket];
@@ -262,87 +259,61 @@ async function ensureNetwork(): Promise<void> {
   await addNetwork();
 }
 
-// ---- 02 market detail ----------------------------------------------------
+// ---- in-page detail ------------------------------------------------------
+//
+// Market detail and open positions were separate numbered screens, so a
+// delegate had to navigate away from the ticket to see what they were about to
+// trade and then navigate back. They are disclosures on the one screen now.
 
 /**
- * Decorative price line, shipped under the read-only-mirror override. It is
- * labelled as indicative so nothing here can be mistaken for a mandate figure.
+ * Decorative price line, shipped under an explicit override of the
+ * read-only-mirror rule. Labelled as indicative so nothing here can be mistaken
+ * for a mandate figure.
  */
 function spark(): string {
   const pr = [118, 110, 124, 96, 88, 104, 72, 78, 60, 66, 48, 40];
   const pts = pr.map((y, i) => (i * 320) / (pr.length - 1) + "," + y).join(" ");
   return [
-    '<svg viewBox="0 0 320 130" preserveAspectRatio="none" style="width:100%;height:110px;display:block" aria-hidden="true">',
+    '<svg viewBox="0 0 320 130" preserveAspectRatio="none" style="width:100%;height:96px;display:block" aria-hidden="true">',
     '<polyline points="' + pts + '" fill="none" stroke="var(--accent)" stroke-width="1.5" />',
     "</svg>",
   ].join("");
 }
 
-export function marketScreen(d: MonitorData | null): string {
+export function marketDetail(): string {
   const mk = state.markets[state.activeMarket];
-  if (!mk) {
-    return [
-      '<div class="screen"><span class="eyebrow">02 / market_detail</span>',
-      '<p class="body" style="margin:0">no market selected.</p>',
-      '<div style="display:flex;flex-direction:column;gap:5px;min-width:0">' + marketPicker() + "</div>",
-      err(),
-      '<button id="m-back" class="btn ghost">&larr; place_order</button></div>',
-    ].join("");
-  }
+  if (!mk) return "";
   const secs = Number(mk.expiry) - Math.floor(Date.now() / 1000);
-  // Before refreshMandate has checked the mandate on chain, `state.allowed` is
-  // the DRAFT set — every discovered market — which would print "allowed" for a
-  // market the mandate excludes. Unchecked is its own answer.
+  // Before the mandate has been checked on chain, `state.allowed` is the DRAFT
+  // set, which would print "allowed" for a market the mandate excludes.
   const allowed = state.allowedKnown ? state.allowed.has(mk.marketId) : null;
   return [
-    '<div class="screen">',
-    '<span class="eyebrow">02 / market_detail</span>',
-    '<h2 style="margin:0;font-size:17px;line-height:1.35;font-weight:500;letter-spacing:-0.03em;min-width:0;overflow-wrap:anywhere">' + esc(mk.label) + "</h2>",
+    '<details class="disclose"><summary>about this market</summary>',
+    '<div style="display:flex;flex-direction:column;gap:10px;padding-top:12px">',
     spark(),
     '<span class="hint">indicative price line — not a mandate figure and not read from chain.</span>',
-    '<div style="display:flex;flex-direction:column">',
     '<div class="rowline" style="padding:8px 0;border-top:1px solid var(--rule)"><span style="font-size:12px;color:var(--dimmer)">resolves</span><span style="font-size:12.5px">' +
       (secs > 0 ? Math.floor(secs / 60) + "m" : "resolved") + "</span></div>",
-    '<div class="rowline" style="padding:8px 0;border-top:1px solid var(--rule)"><span style="font-size:12px;color:var(--dimmer)">on_delegator_list</span><span style="font-size:12.5px;color:' +
+    '<div class="rowline" style="padding:8px 0;border-top:1px solid var(--rule)"><span style="font-size:12px;color:var(--dimmer)">on their allowed list</span><span style="font-size:12.5px;color:' +
       (allowed === true ? "var(--ink)" : allowed === false ? "var(--accent)" : "var(--dimmer)") + '">' +
       (allowed === true ? "allowed" : allowed === false ? "not allowed" : "not checked yet") + "</span></div>",
-    "</div>",
-    envelope(d),
-    err(),
-    '<button id="m-back" class="btn ghost">&larr; place_order</button>',
-    "</div>",
+    "</div></details>",
   ].join("");
 }
 
-export function bindMarket(): void {
-  document.getElementById("m-back")?.addEventListener("click", () => go("trade"));
-  document.querySelectorAll<HTMLButtonElement>("[data-pick]").forEach((b) => {
-    b.addEventListener("click", () => set({ activeMarket: Number(b.dataset.pick), error: "" }));
-  });
-}
-
-// ---- 03 open positions ---------------------------------------------------
-
-export function positionsScreen(d: MonitorData | null): string {
+export function ordersDetail(d: MonitorData | null): string {
   const delegator = d ? d.m[0] : null;
   return [
-    '<div class="screen">',
-    '<span class="eyebrow">03 / open_positions</span>',
-    '<h2 style="margin:0;font-size:18px;line-height:1.3;font-weight:500;letter-spacing:-0.04em">positions / settle to delegator</h2>',
+    '<details class="disclose"><summary>your orders</summary>',
+    '<div style="display:flex;flex-direction:column;gap:10px;padding-top:12px">',
     '<p class="body" style="margin:0">you place these. they are not yours. every payout settles to' +
       (delegator ? " " + delegator.slice(0, 6) + "…" + delegator.slice(-4) : " the delegator") +
       ", and the registry keeps nothing that is not owed to a named party.</p>",
     state.log.length === 0
-      ? '<span class="hint">no orders placed from this browser yet.</span>'
+      ? '<span class="hint">nothing placed from this browser yet.</span>'
       : '<div style="font-size:11.5px;color:var(--dimmer);word-break:break-all">' +
         state.log.map((l) => '<div style="padding:7px 0;border-top:1px solid var(--rule)">' + l.html + "</div>").join("") +
         "</div>",
-    envelope(d),
-    err(),
-    "</div>",
+    "</div></details>",
   ].join("");
-}
-
-export function bindPositions(): void {
-  /* nothing interactive here yet; present so the dispatcher is uniform */
 }

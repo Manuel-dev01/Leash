@@ -7,7 +7,7 @@
  * MarketCreated straight from the module singleton instead.
  */
 import {
-  state, set, go, subscribe, NAV, WHY,
+  state, set, go, subscribe, SETUP_STEPS, HOME, stepOf,
   type Role, type Screen,
 } from "./state.js";
 import {
@@ -15,13 +15,10 @@ import {
   erc20Abi, COLLATERAL, addrUrl, fmt, errName,
 } from "./chain.js";
 import {
-  connectScreen, bindConnect, pickScreen, bindPick, limitsScreen, bindLimits,
-  reviewScreen, bindReview, issueScreen, bindIssue, monitorScreen, monitorData,
-  bindMonitor, revokeScreen, bindRevoke, type MonitorData,
+  setupScreen, bindSetup, limitsScreen, bindLimits, reviewScreen, bindReview,
+  issueScreen, bindIssue, manageScreen, bindManage, monitorData, type MonitorData,
 } from "./screens/delegator.js";
-import {
-  tradeScreen, bindTrade, marketScreen, bindMarket, positionsScreen, bindPositions,
-} from "./screens/delegate.js";
+import { tradeScreen, bindTrade } from "./screens/delegate.js";
 import { reloadMarkets } from "./markets.js";
 import type { Address } from "viem";
 import "./design.css";
@@ -48,6 +45,10 @@ const mParam = q.get("m");
 if (mParam !== null) {
   if (/^\d+$/.test(mParam.trim())) {
     state.mandateId = BigInt(mParam.trim());
+    // A link that carries a mandate should open ON that mandate. Landing on
+    // step 1 of setup and asking someone to walk a wizard they have already
+    // completed is how a returning delegator concludes nothing was saved.
+    if (state.role === "delegator") state.screen = "manage";
   } else {
     state.mandateParamError =
       `the link carries an unreadable mandate id ("${mParam.slice(0, 24)}"). ask for the link again.`;
@@ -56,55 +57,74 @@ if (mParam !== null) {
 
 // ---- render --------------------------------------------------------------
 
-function renderRail() {
+/**
+ * Where you are, in one line.
+ *
+ * During setup this is a step counter and a bar; afterwards there is nothing to
+ * count, so it becomes the name of the surface you are on. The seven-row nav
+ * this replaces promised free navigation over steps that have hard dependencies
+ * — you could open "issue" before a mandate existed and be told there was
+ * nothing to hand over.
+ */
+function renderProgress() {
+  const step = stepOf(state.screen);
+  const el = $("progress");
+  if (state.role === "delegate") { el.innerHTML = ""; return; }
+
+  if (!step) {
+    el.innerHTML =
+      '<div class="progress-head"><span>your delegation</span>' +
+      (state.mandateId ? "<span>#" + String(state.mandateId) + "</span>" : "") +
+      "</div>";
+    return;
+  }
+  const bars = SETUP_STEPS.map((_, i) =>
+    '<i class="' + (i + 1 < step.index ? "done" : i + 1 === step.index ? "now" : "") + '"></i>').join("");
+  const back = step.index > 1
+    ? '<button class="backlink" id="p-back">&larr; back</button>'
+    : "<span></span>";
+  el.innerHTML =
+    '<div class="progress-head">' + back +
+    "<span>step " + step.index + " of " + step.total + " · " + step.label + "</span></div>" +
+    '<div class="progress-bar">' + bars + "</div>";
+  document.getElementById("p-back")?.addEventListener("click", () => {
+    const prev = SETUP_STEPS[step.index - 2];
+    if (prev) go(prev.screen);
+  });
+}
+
+function renderChrome() {
   $("tab-delegator").className = state.role === "delegator" ? "on" : "";
   $("tab-delegate").className = state.role === "delegate" ? "on" : "";
   $("tab-delegator").setAttribute("aria-pressed", String(state.role === "delegator"));
   $("tab-delegate").setAttribute("aria-pressed", String(state.role === "delegate"));
-  $("nav").innerHTML = NAV[state.role]
-    .map(([n, label, screen]) =>
-      '<button class="navrow' + (state.screen === screen ? " on" : "") + '" data-go="' + screen + '"' +
-      (state.screen === screen ? ' aria-current="step"' : "") +
-      '><span class="n">' + n + "</span><span>" + label + "</span></button>")
-    .join("");
-  $("nav").querySelectorAll<HTMLButtonElement>("[data-go]").forEach((b) => {
-    b.addEventListener("click", () => go(b.dataset.go as Screen));
-  });
-  $("why").textContent = WHY[state.screen] ?? "";
   $("netline").textContent = state.onChain ? "chain 50312 · ready" : "chain 50312";
   $("chip").textContent = state.onChain ? "network ready" : "add somnia 50312";
   $("chip").className = "chip" + (state.onChain ? " on" : "");
+  renderProgress();
 }
 
 function renderScreen() {
   const s = state.screen;
   const html =
-    s === "connect" ? connectScreen()
-    : s === "pick" ? pickScreen()
+    s === "setup" ? setupScreen()
     : s === "limits" ? limitsScreen()
     : s === "review" ? reviewScreen()
     : s === "issue" ? issueScreen()
-    : s === "monitor" ? monitorScreen(monitor)
-    : s === "revoke" ? revokeScreen()
-    : s === "trade" ? tradeScreen(monitor)
-    : s === "market" ? marketScreen(monitor)
-    : positionsScreen(monitor);
+    : s === "manage" ? manageScreen(monitor)
+    : tradeScreen(monitor);
   $("screen").innerHTML = html;
 
-  if (s === "connect") bindConnect();
-  else if (s === "pick") bindPick();
+  if (s === "setup") bindSetup();
   else if (s === "limits") bindLimits();
   else if (s === "review") bindReview();
   else if (s === "issue") bindIssue();
-  else if (s === "monitor") bindMonitor();
-  else if (s === "revoke") bindRevoke();
-  else if (s === "trade") bindTrade();
-  else if (s === "market") bindMarket();
-  else if (s === "positions") bindPositions();
+  else if (s === "manage") bindManage();
+  else bindTrade();
 }
 
 function render() {
-  renderRail();
+  renderChrome();
   renderScreen();
 }
 subscribe(render);
@@ -218,11 +238,11 @@ async function renderContext() {
 
 $("tab-delegator").addEventListener("click", () => {
   state.role = "delegator" as Role;
-  go("connect");
+  go(state.mandateId ? "manage" : HOME.delegator);
 });
 $("tab-delegate").addEventListener("click", () => {
   state.role = "delegate" as Role;
-  go("trade");
+  go(HOME.delegate);
 });
 $("chip").addEventListener("click", async () => {
   try {

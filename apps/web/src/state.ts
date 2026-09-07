@@ -5,9 +5,28 @@
 import type { Address, Hex } from "viem";
 
 export type Role = "delegator" | "delegate";
+/**
+ * The delegator's flow is not seven equal steps. It is a SETUP you do once and
+ * a SURFACE you come back to, and flattening those into one numbered list is
+ * what made the app read like a form rather than a product.
+ *
+ *   setup -> limits -> review -> issue     four steps, strictly ordered
+ *   manage                                  where you live afterwards
+ *
+ * The delegate gets ONE screen. Someone scanning a QR on a phone should meet a
+ * ticket, not an information architecture.
+ */
 export type Screen =
-  | "connect" | "pick" | "limits" | "review" | "issue" | "monitor" | "revoke"
-  | "trade" | "market" | "positions";
+  | "setup" | "limits" | "review" | "issue" | "manage"
+  | "trade";
+
+/** The ordered setup steps, for the progress indicator. */
+export const SETUP_STEPS: { screen: Screen; label: string }[] = [
+  { screen: "setup", label: "who trades" },
+  { screen: "limits", label: "the limits" },
+  { screen: "review", label: "review" },
+  { screen: "issue", label: "hand over" },
+];
 
 export interface Market {
   marketId: Hex;
@@ -84,7 +103,7 @@ export function staleness(now = Date.now()): { known: boolean; stale: boolean; a
 
 export const state: State = {
   role: "delegator",
-  screen: "connect",
+  screen: "setup",
   account: null,
   onChain: false,
   delegate: "",
@@ -128,35 +147,18 @@ export function go(screen: Screen) {
 }
 
 /**
- * The design's own rationale for each screen, kept because it records intent the
- * markup cannot.
+ * NOTE: the design file's `why_this_screen` notes used to be rendered into the
+ * page. They are rationale ABOUT the design, addressed to whoever reads it —
+ * "the first screen sells the mechanism, not the brand" is a note to a
+ * designer, and it was showing to users on every screen. The notes now live
+ * where they belong: as comments above the screens they describe.
  */
-export const WHY: Record<Screen, string> = {
-  connect: "the first screen sells the mechanism, not the brand. a delegator who does not understand that nothing is being sent will not sign.",
-  pick: "the delegate is named before the limits are set, so the limits are chosen for a person rather than in the abstract.",
-  limits: "four limits, each with the sentence that says what it prevents. nothing hidden behind an advanced toggle.",
-  review: "the signature screen states what is being signed in plain terms and names the withdraw destination, which is the question a careful delegator actually has.",
-  issue: "the handoff is the one step that crosses two people and two devices. it has to work with a phone camera and no typing.",
-  monitor: "the delegator reads the delegation without asking the delegate anything.",
-  revoke: "revoke reads as one transaction with no counterparty, and the held-by-registry line is the proof, sitting at zero.",
-  trade: "the limits sit above the ticket permanently. the delegate cannot look at a market without seeing the envelope they are working inside.",
-  market: "their own fills are marked, and the allowed line ties the market back to the delegator list.",
-  positions: "positions are shown to the delegate but labelled as settling to the delegator, so ownership is never ambiguous mid-trade.",
-};
+/** Where each role starts. */
+export const HOME: Record<Role, Screen> = { delegator: "setup", delegate: "trade" };
 
-export const NAV: Record<Role, [string, string, Screen][]> = {
-  delegator: [
-    ["01", "connect", "connect"],
-    ["02", "choose_delegate", "pick"],
-    ["03", "set_limits", "limits"],
-    ["04", "review_sign", "review"],
-    ["05", "issue", "issue"],
-    ["06", "monitor", "monitor"],
-    ["07", "revoke", "revoke"],
-  ],
-  delegate: [
-    ["01", "place_order", "trade"],
-    ["02", "market_detail", "market"],
-    ["03", "open_positions", "positions"],
-  ],
-};
+/** How far through setup we are, or null once setup is done. */
+export function stepOf(screen: Screen): { index: number; total: number; label: string } | null {
+  const i = SETUP_STEPS.findIndex((s) => s.screen === screen);
+  if (i < 0) return null;
+  return { index: i + 1, total: SETUP_STEPS.length, label: SETUP_STEPS[i]!.label };
+}

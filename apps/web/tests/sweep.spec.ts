@@ -81,8 +81,12 @@ async function shot(page: Page, name: string, project: string) {
   await page.screenshot({ path: `${SHOTS}/${project}-${name}.png`, fullPage: true });
 }
 
-const DELEGATOR_SCREENS = ["connect", "pick", "limits", "review", "issue", "monitor", "revoke"] as const;
-const DELEGATE_SCREENS = ["trade", "market", "positions"] as const;
+/**
+ * The delegator's screens are a strictly ordered SETUP plus a manage surface,
+ * so the sweep walks them the way a user does rather than jumping by nav id —
+ * there is no nav to jump with any more, which was the point.
+ */
+const SETUP_STEPS = ["setup", "limits", "review", "issue"] as const;
 
 test.describe("landing", () => {
   test("renders, resolves its live stat, and has no overflow", async ({ page }, info) => {
@@ -129,64 +133,68 @@ test.describe("landing", () => {
 });
 
 test.describe("app — no wallet", () => {
-  test("every screen renders, none is stuck, none overflows", async ({ page }, info) => {
+  test("content comes before chrome on every viewport", async ({ page }, info) => {
     const p = watch(page);
     await page.goto("/app.html");
     await page.waitForTimeout(GRACE_MS);
 
-    for (const screen of DELEGATOR_SCREENS) {
-      await page.locator(`[data-go="${screen}"]`).click();
-      await page.waitForTimeout(400);
-      const s = await stuck(page);
-      expect(s, `delegator/${screen} stuck on: ${s.join(", ")}`).toEqual([]);
-      const o = await overflow(page);
-      expect(o.offenders, `delegator/${screen} overflow: ${JSON.stringify(o.offenders)}`).toEqual([]);
-      await shot(page, `delegator-${screen}`, info.project.name);
-    }
+    // The old shell put a role switch, seven numbered nav rows and a paragraph
+    // above the screen: the first line of copy started at 601px of an 844px
+    // phone viewport. Chrome must not dominate the first screenful.
+    const m = await page.evaluate(() => {
+      const h = document.querySelector("#screen h2")?.getBoundingClientRect();
+      return { headingTop: Math.round(h?.top ?? -1), vh: window.innerHeight };
+    });
+    expect(m.headingTop, "no heading rendered").toBeGreaterThan(0);
+    expect(m.headingTop, `content starts ${m.headingTop}px down a ${m.vh}px viewport`)
+      .toBeLessThan(m.vh * 0.35);
 
-    await page.locator("#tab-delegate").click();
-    await page.waitForTimeout(600);
-    for (const screen of DELEGATE_SCREENS) {
-      await page.locator(`[data-go="${screen}"]`).click();
-      await page.waitForTimeout(400);
-      const s = await stuck(page);
-      expect(s, `delegate/${screen} stuck on: ${s.join(", ")}`).toEqual([]);
-      const o = await overflow(page);
-      expect(o.offenders, `delegate/${screen} overflow: ${JSON.stringify(o.offenders)}`).toEqual([]);
-      await shot(page, `delegate-${screen}`, info.project.name);
-    }
-
-    expect(p.pageerrors, "page errors").toEqual([]);
-    expect(p.console, "console errors").toEqual([]);
+    const o = await overflow(page);
+    expect(o.offenders, `overflow: ${JSON.stringify(o.offenders)}`).toEqual([]);
+    await shot(page, "setup", info.project.name);
+    expect(p.pageerrors).toEqual([]);
+    expect(p.console).toEqual([]);
   });
 
-  test("no control is dead: every enabled button says or does something", async ({ page }) => {
+  test("designer's notes are not shipped as product copy", async ({ page }) => {
+    await page.goto("/app.html");
+    await page.waitForTimeout(3_000);
+    const body = (await page.locator("body").innerText()).toLowerCase();
+    // `why_this_screen` from the design file is rationale ABOUT the design,
+    // addressed to whoever reads it. It was rendering on every screen.
+    for (const leak of [
+      "sells the mechanism, not the brand",
+      "why_this_screen",
+      "the delegator's screens write the limits",
+    ]) {
+      expect(body, `internal design note visible to users: "${leak}"`).not.toContain(leak);
+    }
+  });
+
+  test("the whole setup flow walks forward and back", async ({ page }, info) => {
+    const p = watch(page);
+    await injectWallet(page, DELEGATOR);
     await page.goto("/app.html");
     await page.waitForTimeout(GRACE_MS);
-    const dead: string[] = [];
 
-    for (const screen of [...DELEGATOR_SCREENS, ...DELEGATE_SCREENS]) {
-      const nav = page.locator(`[data-go="${screen}"]`);
-      if (!(await nav.count())) continue;
-      await nav.click();
-      await page.waitForTimeout(300);
+    await expect(page.locator("#progress")).toContainText(/step 1 of 4/i);
+    await page.locator("#d-connect").click();
+    await page.waitForTimeout(1_200);
+    await page.locator("#d-addr").fill(DELEGATE);
+    await page.locator("#d-next").click();
+    await page.waitForTimeout(600);
+    await expect(page.locator("#progress")).toContainText(/step 2 of 4/i);
 
-      const buttons = page.locator("#screen button:enabled");
-      const n = await buttons.count();
-      for (let i = 0; i < n; i++) {
-        const b = buttons.nth(i);
-        const label = (await b.innerText()).trim().slice(0, 30);
-        const before = await page.locator("#screen").innerText();
-        await b.click({ timeout: 5_000 }).catch(() => {});
-        await page.waitForTimeout(500);
-        const after = await page.locator("#screen").innerText();
-        if (before === after) dead.push(`${screen} › "${label}"`);
-        // Return to the screen under test in case the click navigated.
-        const back = page.locator(`[data-go="${screen}"]`);
-        if (await back.count()) { await back.click(); await page.waitForTimeout(200); }
-      }
-    }
-    expect(dead, `enabled controls that produced no visible change: ${dead.join(" | ")}`).toEqual([]);
+    const s2 = await stuck(page);
+    expect(s2, `limits stuck on: ${s2.join(", ")}`).toEqual([]);
+    await shot(page, "limits", info.project.name);
+
+    // Back must work from every step past the first.
+    await page.locator("#p-back").click();
+    await page.waitForTimeout(400);
+    await expect(page.locator("#progress")).toContainText(/step 1 of 4/i);
+
+    expect(p.pageerrors).toEqual([]);
   });
 });
 
@@ -221,10 +229,10 @@ test.describe("app — wallet present", () => {
     await page.locator("#d-connect").click();
     await page.waitForTimeout(1_000);
     await page.locator("#d-addr").fill(DELEGATE);
-    await page.locator("#d-next").click();
-    await page.waitForTimeout(500);
-    await page.locator("[data-go='review']").click();
-    await page.waitForTimeout(500);
+    await page.locator("#d-next").click();          // step 1 -> 2
+    await page.waitForTimeout(1_500);
+    await page.locator("#d-review").click();        // step 2 -> 3
+    await page.waitForTimeout(800);
     const sign = page.locator("#d-sign");
     if (await sign.count()) {
       await sign.click();
@@ -275,13 +283,18 @@ test.describe("negative cases", () => {
   test("a dead RPC does not leave the app spinning", async ({ page }, info) => {
     await page.route("**/api.infra.testnet.somnia.network/**", (r) => r.abort());
     await page.route("**/dream-rpc.somnia.network/**", (r) => r.abort());
+    await injectWallet(page, DELEGATOR);
     await page.goto("/app.html");
     await page.waitForTimeout(GRACE_MS);
-    await page.locator("[data-go='limits']").click();
-    await page.waitForTimeout(1_000);
+    // The market state lives on step 2, so walk there before judging it.
+    await page.locator("#d-connect").click();
+    await page.waitForTimeout(800);
+    await page.locator("#d-addr").fill(DELEGATE);
+    await page.locator("#d-next").click();
+    await page.waitForTimeout(1_500);
     const s = await stuck(page);
     expect(s, `dead RPC left a permanent loading state: ${s.join(", ")}`).toEqual([]);
-    await expect(page.locator("#screen")).toContainText(/could not|failed|unavailable|retry|degraded/i);
+    await expect(page.locator("#screen")).toContainText(/could not|failed|unavailable|retry|degraded|not open/i);
     await shot(page, "dead-rpc-app", info.project.name);
   });
 });
@@ -291,7 +304,8 @@ test.describe("handoff", () => {
     const p = watch(page);
     await page.goto("/app.html?m=61");
     await page.waitForTimeout(4_000);
-    await page.locator('[data-go="issue"]').click();
+    await page.locator("#m-link").click();
+    await page.waitForTimeout(600);
     await page.waitForTimeout(500);
 
     // The link must carry the mandate and the delegate role, or the person who

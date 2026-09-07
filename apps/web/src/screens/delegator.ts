@@ -49,97 +49,77 @@ const logHtml = () =>
     .map((l) => '<div style="padding:6px 0;border-top:1px solid var(--rule)">' + l.html + "</div>")
     .join("");
 
-// ---- 01 connect ----------------------------------------------------------
+// ---- step 1 · who trades -------------------------------------------------
+//
+// Connecting was its own numbered step, which made the first thing the product
+// asked of you a piece of plumbing. It is a precondition, so it sits inline
+// above the question that actually matters.
 
-const CANNOT = [
-  "move your money to any address but yours",
-  "trade a market you did not allow",
-  "spend more than the per-order cap",
-  "keep trading after the budget or the clock runs out",
-];
-
-export function connectScreen(): string {
+export function setupScreen(): string {
+  const connected = !!state.account;
   return [
     '<div class="screen">',
-    '<span class="eyebrow">01 / setup</span>',
-    '<h2 style="margin:0;font-size:25px;line-height:1.22;font-weight:500;letter-spacing:-0.04em">let someone trade for you.<br />keep your money.</h2>',
+    '<h2 style="margin:0;font-size:26px;line-height:1.2;font-weight:500;letter-spacing:-0.04em">let someone trade for you.<br />keep your money.</h2>',
     '<p class="body" style="margin:0">you approve an amount. you do not send it. it stays in this wallet until an order that satisfies your limits pulls exactly what it needs.</p>',
-    '<div style="display:flex;flex-direction:column;gap:7px">',
-    '<button id="d-addnet" class="btn ghost" style="display:flex;align-items:center;justify-content:space-between">',
-    "<span>" + (state.onChain ? "network ready" : "add somnia network") + "</span>",
-    '<span style="font-size:11px;color:var(--dimmer)">chain:50312</span></button>',
-    '<button id="d-connect" class="btn"' + (state.busy ? " disabled" : "") + ">" +
-      (state.busy ? "waiting for your wallet…" : state.account ? short(state.account) : "connect wallet") + "</button>",
-    "</div>",
-    '<div style="border-top:1px solid var(--rule);padding-top:16px;display:flex;flex-direction:column;gap:10px">',
-    '<span class="eyebrow">what leash cannot do</span>',
-    CANNOT.map((c) => '<span class="refusal"><span class="x">x</span>' + c + "</span>").join(""),
+
+    connected
+      ? '<div class="sep rowline"><span style="font-size:12px;color:var(--dimmer)">your wallet</span>' +
+        '<span style="font-size:12.5px">' + short(state.account!) + "</span></div>"
+      : '<div class="sep" style="display:flex;flex-direction:column;gap:7px">' +
+        '<button id="d-connect" class="btn"' + (state.busy ? " disabled" : "") + ">" +
+        (state.busy ? "waiting for your wallet…" : "connect wallet") + "</button>" +
+        '<span class="hint">connecting adds the somnia network if your wallet does not have it yet.</span>' +
+        "</div>",
+
+    '<div class="sep" style="display:flex;flex-direction:column;gap:9px;min-width:0">',
+    '<label class="eyebrow" for="d-addr" style="letter-spacing:0.12em">who is trading for you?</label>',
+    '<input id="d-addr" class="field" value="' + esc(state.delegate) + '" placeholder="their wallet address, 0x…" spellcheck="false" autocomplete="off" />',
+    '<span class="hint">they sign their own transactions from this address. they never see your key, and you never see theirs.</span>',
     "</div>",
     err(),
+    '<button id="d-next" class="btn accent"' + (connected ? "" : " disabled") + ">" +
+      (connected ? "set the limits &rarr;" : "connect first") + "</button>",
     "</div>",
   ].join("");
 }
 
-export function bindConnect(): void {
+export function bindSetup(): void {
   document.getElementById("d-addnet")?.addEventListener("click", async () => {
     try {
       await addNetwork();
       set({ onChain: await onRightChain(), error: "" });
-    } catch (e) {
-      set({ error: errName(e) });
-    }
+    } catch (e) { set({ error: errName(e) }); }
   });
   document.getElementById("d-connect")?.addEventListener("click", async () => {
     set({ busy: true, error: "" });
     try {
       const a = await connect();
       if (!(await onRightChain())) await addNetwork();
-      set({ account: a, onChain: await onRightChain(), busy: false, error: "", screen: "pick" });
+      set({ account: a, onChain: await onRightChain(), busy: false, error: "" });
     } catch (e) {
       set({ busy: false, error: errName(e) });
     }
   });
-}
 
-// ---- 02 choose delegate --------------------------------------------------
-
-export function pickScreen(): string {
-  return [
-    '<div class="screen">',
-    '<span class="eyebrow">02 / who trades</span>',
-    '<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">who is trading for you?</h2>',
-    '<div style="display:flex;flex-direction:column;gap:9px">',
-    '<label class="eyebrow" for="d-addr" style="letter-spacing:0.12em">delegate_address</label>',
-    '<input id="d-addr" class="field" value="' + esc(state.delegate) + '" placeholder="0x…" spellcheck="false" autocomplete="off" />',
-    '<span class="hint">they sign their own transactions from this address. they never see your key.</span>',
-    "</div>",
-    err(),
-    '<button id="d-next" class="btn">set the limits &rarr;</button>',
-    "</div>",
-  ].join("");
-}
-
-export function bindPick(): void {
   const input = document.getElementById("d-addr") as HTMLInputElement | null;
-  const clear = document.querySelector<HTMLElement>('[role="alert"]');
+  const alert = document.querySelector<HTMLElement>('[role="alert"]');
   input?.addEventListener("input", () => {
-    // Deliberately NOT set(): a re-render would replace the input mid-keystroke.
-    // The error node is cleared directly instead, so the message does not sit
-    // there contradicting what the user is typing.
+    // Not set(): a re-render would replace the field mid-keystroke.
     state.delegate = input.value;
     state.error = "";
-    if (clear) clear.textContent = "";
+    if (alert) alert.textContent = "";
   });
   document.getElementById("d-next")?.addEventListener("click", () => {
+    if (!state.account) { set({ error: "connect your wallet first" }); return; }
     if (!/^0x[0-9a-fA-F]{40}$/.test(state.delegate.trim())) {
-      set({ error: "that is not a 20-byte address" });
+      set({ error: "that is not a 20-byte wallet address" });
       return;
     }
     set({ error: "", screen: "limits" });
   });
 }
 
-// ---- 03 limits -----------------------------------------------------------
+// ---- step 2 · the limits -----------------------------------------------------------
 
 function slider(id: string, label: string, val: number, min: number, max: number, step: number, note: string, unit: string): string {
   return [
@@ -189,7 +169,6 @@ function marketList(): string {
 export function limitsScreen(): string {
   return [
     '<div class="screen" style="gap:20px">',
-    '<span class="eyebrow">03 / the leash</span>',
     slider("s-budget", "total_budget", state.budget, 100, 2000, 50, "the most that can ever be pulled from your wallet, across the whole delegation.", "tUSDC"),
     slider("s-order", "max_per_order", state.maxOrder, 10, 200, 5, "caps one bad decision. checked before the pull, in the same transaction.", "tUSDC"),
     '<div class="sep" style="display:flex;flex-direction:column;gap:10px;min-width:0">',
@@ -255,7 +234,19 @@ export function bindLimits(): void {
   });
 }
 
-// ---- 04 review + sign ----------------------------------------------------
+// ---- step 3 · review ----------------------------------------------------
+//
+// The four refusals used to open the app, before the user had done anything —
+// four red crosses as a greeting, making claims at the moment they had least
+// reason to be believed. They belong HERE, next to the signature, which is the
+// only moment they are load-bearing. They are proven later still, by a refusal
+// and a reverted transaction.
+const CANNOT = [
+  "move your money to any address but yours",
+  "trade a market you did not allow",
+  "spend more than the per-order cap",
+  "keep trading after the budget or the clock runs out",
+];
 
 function row(k: string, v: string): string {
   return [
@@ -268,7 +259,6 @@ function row(k: string, v: string): string {
 export function reviewScreen(): string {
   return [
     '<div class="screen">',
-    '<span class="eyebrow">04 / sign once</span>',
     '<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">one signature. then nothing.</h2>',
     "<div>",
     row("delegate", state.delegate ? short(state.delegate) : "—"),
@@ -280,6 +270,10 @@ export function reviewScreen(): string {
     "</div>",
     '<p class="body" style="margin:0">signing approves the registry to pull up to ' + state.budget +
       " tUSDC <b>from this wallet</b>, and writes the limits on chain. the money does not move now.</p>",
+    '<div class="sep" style="display:flex;flex-direction:column;gap:10px">',
+    '<span class="eyebrow">once signed, they cannot</span>',
+    CANNOT.map((c) => '<span class="refusal"><span class="x">x</span>' + c + "</span>").join(""),
+    "</div>",
     err(),
     '<button id="d-sign" class="btn accent"' + (state.busy ? " disabled" : "") + ">" +
       (state.busy ? "waiting…" : "approve + create mandate") + "</button>",
@@ -345,7 +339,7 @@ export function bindReview(): void {
   });
 }
 
-// ---- 05 issue ------------------------------------------------------------
+// ---- step 4 · hand over ------------------------------------------------------------
 
 /** The link the delegate opens. Same origin, so it works wherever this is served. */
 export function delegateLink(): string {
@@ -358,7 +352,6 @@ export function issueScreen(): string {
   if (!state.mandateId) {
     return [
       '<div class="screen">',
-      '<span class="eyebrow">05 / issue</span>',
       '<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">nothing to hand over yet</h2>',
       '<p class="body" style="margin:0">create a mandate first — step 04 — and the link and code appear here.</p>',
       err(),
@@ -374,7 +367,6 @@ export function issueScreen(): string {
   }
   return [
     '<div class="screen">',
-    '<span class="eyebrow">05 / issue</span>',
     '<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">hand it to them</h2>',
     '<p class="body" style="margin:0">mandate <b>#' + String(state.mandateId) + '</b>. they scan this, or open the link. it carries no key and no permission by itself — the limits live on chain.</p>',
     '<div style="background:#fff;padding:12px;align-self:flex-start;line-height:0">' + qr + "</div>",
@@ -384,7 +376,7 @@ export function issueScreen(): string {
     '<button id="d-copy" class="btn ghost">copy link</button>',
     "</div>",
     err(),
-    '<button id="d-tomonitor" class="btn">watch it &rarr;</button>',
+    '<button id="d-tomonitor" class="btn">done &mdash; watch it &rarr;</button>',
     "</div>",
   ].join("");
 }
@@ -417,10 +409,14 @@ export function bindIssue(): void {
       restore("selected — press copy");
     }
   });
-  document.getElementById("d-tomonitor")?.addEventListener("click", () => go("monitor"));
+  document.getElementById("d-tomonitor")?.addEventListener("click", () => go("manage"));
 }
 
-// ---- 06 monitor ----------------------------------------------------------
+// ---- manage · where you live once it exists ------------------------------
+//
+// Monitoring and ending a delegation were two numbered steps, which implied you
+// walk through them. You do not: one is where you sit, the other is a thing you
+// do from there. Revoke is now an action on this screen, not a destination.
 
 export interface MonitorData {
   m: readonly [Address, Address, bigint, bigint, bigint, bigint, boolean, boolean];
@@ -454,20 +450,18 @@ export function freshnessLine(): string {
     "s ago — the chain is not answering, so these figures are stale.</span>";
 }
 
-export function monitorScreen(d: MonitorData | null): string {
+
+export function manageScreen(d: MonitorData | null): string {
   if (state.mandateParamError) {
-    return [
-      '<div class="screen">',
-      '<span class="eyebrow">06 / monitor</span>',
-      '<p role="alert" class="body" style="margin:0;color:var(--accent)">' + esc(state.mandateParamError) + "</p>",
-      "</div>",
-    ].join("");
+    return '<div class="screen"><p role="alert" class="body" style="margin:0;color:var(--accent)">' +
+      esc(state.mandateParamError) + "</p></div>";
   }
   if (!state.mandateId) {
     return [
       '<div class="screen">',
-      '<span class="eyebrow">06 / monitor</span>',
-      '<p class="body" style="margin:0">no mandate yet. create one in steps 02–04, and this screen reads it back from the contract.</p>',
+      '<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">no delegation yet</h2>',
+      '<p class="body" style="margin:0">set one up and this becomes where you watch it, share the link again, or end it.</p>',
+      '<button id="m-start" class="btn accent">set one up &rarr;</button>',
       err(),
       "</div>",
     ].join("");
@@ -475,8 +469,7 @@ export function monitorScreen(d: MonitorData | null): string {
   if (!d) {
     return [
       '<div class="screen">',
-      '<span class="eyebrow">06 / monitor</span>',
-      '<p class="body" style="margin:0">reading mandate #' + String(state.mandateId) + " from the contract…</p>",
+      '<p class="body" style="margin:0">reading delegation #' + String(state.mandateId) + " from the contract…</p>",
       freshnessLine(),
       err(),
       "</div>",
@@ -491,81 +484,55 @@ export function monitorScreen(d: MonitorData | null): string {
   const live = !revoked && BigInt(Math.floor(Date.now() / 1000)) < expiry;
   const pct = cap === 0n ? 0 : Number((d.remaining * 100n) / cap);
   const secs = Number(expiry) - Math.floor(Date.now() / 1000);
-  const status = live ? "delegation_active" : revoked ? "revoked" : "expired";
 
   return [
     '<div class="screen">',
-    '<div class="rowline"><span class="eyebrow">06 / monitor</span>',
-    '<span style="font-size:11px;color:' + (live ? "var(--accent)" : "var(--dimmer)") + '">' + status + "</span></div>",
+    '<div class="rowline"><h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">your delegation</h2>',
+    '<span style="font-size:11px;color:' + (live ? "var(--accent)" : "var(--dimmer)") + '">' +
+      (live ? "active" : revoked ? "revoked" : "expired") + "</span></div>",
     '<div style="display:flex;flex-direction:column;gap:8px">',
-    '<div class="rowline"><span style="font-size:12px;color:var(--dimmer)">allowance_remaining</span>',
+    '<div class="rowline"><span style="font-size:12px;color:var(--dimmer)">they may still spend</span>',
     '<span style="font-size:22px;letter-spacing:-0.03em">' + fmt(d.remaining) + "</span></div>",
     '<div class="meter"><i style="width:' + Math.max(0, Math.min(100, pct)) + '%"></i></div>',
     '<span class="hint">' + fmt(used) + " of " + fmt(cap) + " spent · max " + fmt(perTrade) + " per order</span>",
     "</div>",
     '<div style="display:flex;flex-direction:column">',
-    row("mandate_id", "#" + String(state.mandateId)),
-    row("trading_for", short(delegate)),
-    row("expires_in", secs > 0 ? Math.floor(secs / 3600) + "h " + Math.floor((secs % 3600) / 60) + "m" : "expired"),
+    row("trading for", short(delegate)),
+    row("expires in", secs > 0 ? Math.floor(secs / 3600) + "h " + Math.floor((secs % 3600) / 60) + "m" : "expired"),
+    row("held by leash", fmt(d.held) + (d.clean ? "" : " UNATTRIBUTED")),
     "</div>",
-    '<div class="rowline" style="padding:8px 0;border-top:1px solid var(--rule)">',
-    '<span style="font-size:12px;color:var(--dimmer)">held_by_registry</span>',
-    '<span style="font-size:12.5px;color:' + (d.clean ? "var(--ink)" : "var(--accent)") + '">' +
-      fmt(d.held) + (d.clean ? "" : " UNATTRIBUTED") + "</span></div>",
     freshnessLine(),
-    '<p class="body" style="margin:0">the registry holds nothing that is not owed to a named party.</p>',
     err(),
-    '<div style="display:flex;gap:7px"><button id="d-toissue" class="btn ghost">the link &rarr;</button>',
-    '<button id="d-torevoke" class="btn ghost">ending it &rarr;</button></div>',
+    '<div class="sep" style="display:flex;flex-direction:column;gap:8px">',
+    '<button id="m-link" class="btn ghost">show the link again</button>',
+    '<button id="m-revoke" class="btn accent"' + (state.busy || !state.account ? " disabled" : "") + ">" +
+      (state.busy ? "ending it…" : "end this delegation") + "</button>",
+    !state.account ? '<span class="hint">connect the wallet that created it to end it — only the delegator can.</span>' : "",
+    '<span class="hint">one transaction, no counterparty. their next order reverts. you can also revoke the allowance from your wallet — either alone is enough.</span>',
     "</div>",
-  ].join("");
-}
-
-export function bindMonitor(): void {
-  document.getElementById("d-torevoke")?.addEventListener("click", () => go("revoke"));
-  document.getElementById("d-toissue")?.addEventListener("click", () => go("issue"));
-}
-
-// ---- 07 revoke -----------------------------------------------------------
-
-export function revokeScreen(): string {
-  const blocked = !state.account ? "connect your wallet to revoke — only the delegator can."
-    : !state.mandateId ? "no mandate to revoke."
-    : "";
-  return [
-    '<div class="screen">',
-    '<span class="eyebrow">07 / revoke</span>',
-    '<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">ending it</h2>',
-    '<p class="body" style="margin:0">one transaction, no counterparty. the delegate cannot stop it, cannot delay it, and does not need to agree. their next order reverts.</p>',
-    '<p class="body" style="margin:0">you can also revoke the ERC-20 allowance from your wallet. either alone is enough.</p>',
-    blocked ? '<span class="hint">' + blocked + "</span>" : "",
-    err(),
-    '<button id="d-revoke" class="btn accent"' + (state.busy || blocked ? " disabled" : "") + ">" +
-      (state.busy ? "revoking…" : "revoke and withdraw") + "</button>",
     '<div style="font-size:11.5px;color:var(--dimmer);word-break:break-all">' + logHtml() + "</div>",
     "</div>",
   ].join("");
 }
 
-export function bindRevoke(): void {
-  document.getElementById("d-revoke")?.addEventListener("click", async () => {
-    // The button is disabled in exactly these cases, so this is belt and
-    // braces — but it reports rather than returning silently, which is what it
-    // used to do while looking perfectly clickable.
-    if (!state.account) { set({ error: "connect your wallet first" }); return; }
-    if (!state.mandateId) { set({ error: "no mandate to revoke" }); return; }
+export function bindManage(): void {
+  document.getElementById("m-start")?.addEventListener("click", () => go("setup"));
+  document.getElementById("m-link")?.addEventListener("click", () => go("issue"));
+  document.getElementById("m-revoke")?.addEventListener("click", async () => {
+    if (!state.account) { set({ error: "connect the delegator wallet first" }); return; }
+    if (!state.mandateId) { set({ error: "no delegation to end" }); return; }
     set({ busy: true, error: "" });
-    const label = document.getElementById("d-revoke");
+    const label = document.getElementById("m-revoke");
     try {
       const hash = await wallet(state.account).writeContract({
         address: REGISTRY as Address, abi: registryAbi, functionName: "revoke", args: [state.mandateId],
       });
       state.log.unshift({
-        html: 'revoke · <a href="' + txUrl(hash) + '" target="_blank" rel="noreferrer">' + hash.slice(0, 12) + "…</a>",
+        html: 'ended · <a href="' + txUrl(hash) + '" target="_blank" rel="noreferrer">' + hash.slice(0, 12) + "…</a>",
       });
       if (label) label.textContent = "waiting for confirmation…";
       await pub.waitForTransactionReceipt({ hash });
-      set({ busy: false, screen: "monitor" });
+      set({ busy: false });
     } catch (e) {
       set({ busy: false, error: errName(e) });
     }
