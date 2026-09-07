@@ -60,8 +60,12 @@ async function main() {
   paint("…");
 
   if (REGISTRY) {
-    $("deployed").textContent = `chain 50312 · registry ${REGISTRY.slice(0, 6)}…${REGISTRY.slice(-4)}`;
-    ($("explorer") as HTMLAnchorElement).href = addrUrl(REGISTRY as Address);
+    $("deployed").textContent = "chain 50312 · somnia shannon";
+    const ex = $("explorer") as HTMLAnchorElement;
+    // The address goes ON the link, so the clickable thing is the thing a
+    // judge wants to click.
+    ex.textContent = `registry ${REGISTRY.slice(0, 10)}…${REGISTRY.slice(-6)} →`;
+    ex.href = addrUrl(REGISTRY as Address);
   } else {
     $("deployed").textContent = "chain 50312 · registry not configured";
   }

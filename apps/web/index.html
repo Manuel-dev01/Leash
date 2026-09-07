@@ -71,7 +71,11 @@
 
 <div style="border-top:1px solid var(--rule);padding:14px clamp(14px,4vw,44px) clamp(24px,5vh,40px);display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;font-size:10.5px;color:var(--dimmer)">
   <span id="deployed">chain 50312</span>
-  <a id="explorer" href="#" target="_blank" rel="noreferrer" style="color:var(--dimmer)">registry &rarr;</a>
+  <!-- The ADDRESS is the link. It used to be a span, with a separate dim
+       "registry →" on the far right doing the linking — so the thing that
+       looked clickable was not, and the thing that was clickable did not look
+       it. -->
+  <a id="explorer" class="footlink" href="#" target="_blank" rel="noreferrer">registry &rarr;</a>
 </div>
 
 <script type="module" src="/src/landing.ts"></script>

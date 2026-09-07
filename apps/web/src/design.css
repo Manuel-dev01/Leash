@@ -189,6 +189,17 @@ input[type=range] { accent-color: var(--accent); height: 20px; }
   padding: 9px 0; overflow-wrap: anywhere;
 }
 
+/* A link has to look like one. --dimmer is ~4:1 on the background, under AA,
+   and at 10.5px with no underline it read as a caption. */
+.footlink {
+  color: var(--dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: var(--rule2);
+  overflow-wrap: anywhere;
+}
+.footlink:hover { color: var(--ink); text-decoration-color: var(--accent); }
+
 .chip {
   border: 1px solid var(--rule2); background: none; color: var(--dim);
   padding: 6px 10px; font-family: var(--mono); font-size: 11px; cursor: pointer;

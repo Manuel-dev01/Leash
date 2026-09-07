@@ -171,6 +171,24 @@ test.describe("app — no wallet", () => {
     }
   });
 
+  /**
+   * The user asked twice for the numbered nav to go, and `01 / place_order`
+   * survived on the delegate screen both times because nothing checked. A
+   * step number on a one-screen role promises an 02 that does not exist.
+   */
+  test("no screen numbers itself", async ({ page }) => {
+    for (const url of ["/app.html", "/app.html?role=delegate&m=1"]) {
+      await page.goto(url);
+      await page.waitForTimeout(1_500);
+      const text = await page.locator("body").innerText();
+      const numbered = text.match(/^\s*0\d\s*[\/·]/m);
+      expect(numbered, `numbered screen label on ${url}: ${numbered?.[0]}`).toBeNull();
+      // The one legitimate counter is the setup progress, which reads
+      // "step N of 4" and belongs to a flow that genuinely has four steps.
+      expect(text).not.toMatch(/step 0\d/);
+    }
+  });
+
   test("the whole setup flow walks forward and back", async ({ page }, info) => {
     const p = watch(page);
     await injectWallet(page, DELEGATOR);
@@ -355,5 +373,44 @@ test.describe("delegate can act without the delegator's screens", () => {
     await expect(page.locator("#tab-delegate")).toHaveClass(/on/);
     await expect(page.locator("#screen")).toContainText(/trading as/i);
     await shot(page, "delegate-connected", info.project.name);
+  });
+});
+
+test.describe("links actually work", () => {
+  test("every link has a real destination, and the address IS the link", async ({ page }) => {
+    // This test exists because the checklist claimed "footer registry → opens
+    // the explorer" and nothing verified it. The href was fine; the AFFORDANCE
+    // was not — the element showing the address was a span, and the anchor was
+    // a separate dim caption. Reported, correctly, as "not clickable".
+    await page.goto("/index.html");
+    await page.waitForTimeout(6_000);
+
+    const links = await page.evaluate(() =>
+      [...document.querySelectorAll("a")].map((a) => ({
+        text: (a.textContent ?? "").trim().slice(0, 40),
+        href: a.getAttribute("href") ?? "",
+      })));
+
+    expect(links.length, "no links on the landing page").toBeGreaterThan(2);
+    const placeholder = links.filter((l) => l.href === "" || l.href === "#");
+    expect(placeholder, `links with no destination: ${JSON.stringify(placeholder)}`).toEqual([]);
+
+    // The registry address must be inside the anchor, not beside it.
+    const ex = links.find((l) => l.href.includes("shannon-explorer"));
+    expect(ex, "no explorer link found").toBeTruthy();
+    expect(ex!.href).toContain("0x7ca9dA7Be8C8F8Ca5E1c9821061cD4fc23418864");
+    expect(ex!.text, `explorer link reads "${ex!.text}" — the address should be the clickable text`)
+      .toMatch(/0x7ca9/i);
+  });
+
+  test("the app's explorer links carry real addresses", async ({ page }) => {
+    await page.goto("/app.html");
+    await page.waitForTimeout(12_000);
+    const ctx = await page.evaluate(() =>
+      [...document.querySelectorAll("#context a")].map((a) => a.getAttribute("href") ?? ""));
+    expect(ctx.length, "context column has no explorer links").toBeGreaterThan(1);
+    for (const href of ctx) {
+      expect(href).toMatch(/^https:\/\/shannon-explorer\.somnia\.network\/address\/0x[0-9a-fA-F]{40}$/);
+    }
   });
 });

@@ -353,7 +353,7 @@ export function issueScreen(): string {
     return [
       '<div class="screen">',
       '<h2 style="margin:0;font-size:22px;line-height:1.28;font-weight:500;letter-spacing:-0.04em">nothing to hand over yet</h2>',
-      '<p class="body" style="margin:0">create a mandate first — step 04 — and the link and code appear here.</p>',
+      '<p class="body" style="margin:0">create a mandate first &mdash; that happens on the review step &mdash; and the link and code appear here.</p>',
       err(),
       "</div>",
     ].join("");

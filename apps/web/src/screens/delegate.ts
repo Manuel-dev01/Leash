@@ -125,7 +125,10 @@ export function tradeScreen(d: MonitorData | null): string {
 
   return [
     '<div class="screen">',
-    '<span class="eyebrow">01 / place_order</span>',
+    // No step number. The delegate has ONE screen, and "01 /" implied an 02
+    // they would never reach — the same numbered-nav tic that was cut from the
+    // delegator flow.
+    '<span class="eyebrow">place an order</span>',
     envelope(d),
     // The delegate's role has no connect screen — their nav is only the three
     // trading screens — so without this the wallet could ONLY be connected from
