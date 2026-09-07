@@ -66,6 +66,15 @@ export interface State {
   mandateId: bigint | null;
   /** Set when `?m=` was present but unusable, so the app can say so. */
   mandateParamError: string;
+  /**
+   * An existing delegation found for this account while they were mid-setup.
+   *
+   * OFFERED, never opened. Connecting on step 1 is someone setting up a NEW
+   * delegation; navigating them to an old one on that click throws them out of
+   * the flow they deliberately started. At boot there is no such flow to
+   * interrupt, which is why boot opens it directly and this does not.
+   */
+  resumeOffer: bigint | null;
   activeMarket: number;
   side: "up" | "down";
   size: number;
@@ -116,6 +125,7 @@ export const state: State = {
   allowed: new Set(),
   mandateId: null,
   mandateParamError: "",
+  resumeOffer: null,
   activeMarket: 0,
   side: "up",
   size: 25,

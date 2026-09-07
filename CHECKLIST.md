@@ -129,8 +129,13 @@ rationale anywhere on the page.**
 | 3.3 | Freshness line | `read from the contract Ns ago` — the number rises, then resets on each poll |
 | 3.4 | **`show the link again`** | Returns to the QR / link screen |
 | 3.5 | **`end this delegation`** | Present **on this screen** — ending is an action here, not a separate step |
+| 3.5b | **`set up another delegation`** | Also on this screen. Without it, resuming would trap you on your first mandate forever |
 | 3.6 | Turn wi-fi off ~30s | Line turns red: *the chain is not answering… stale*. Figures **stay**; no zeros appear |
 | 3.7 | Wi-fi on, reload `/app?m=N` | Opens **directly on your delegation** — not back at step 1 |
+| 3.8 | Now open **plain `/app`**, with no `?m=` at all | Still opens on your delegation. The app looks your newest mandate up **on the contract** by your address, and writes `?m=N` back into the URL |
+| 3.9 | Close the tab entirely, reopen `/app` | Same — the delegation is on chain, so losing the link does not lose it |
+| 3.10 | Click **`set up another delegation`** | Back to `step 1 of 4`, and `?m=` is **gone** from the URL. Your old delegation is untouched on chain |
+| 3.11 | Reload once more | You are back on the **old** delegation, not the half-finished new one — nothing was created, so there is nothing newer to find |
 
 ---
 
@@ -215,13 +220,14 @@ delegator view.
 
 ## 9 · The five that actually matter
 
-If you only do five things:
+If you only do six things:
 
 1. **2.23** — scan the QR with a real camera
 2. **4.2** — the delegate connects without leaving their own screen
 3. **4.9 → 4.10** — place an order, watch the envelope drop
-4. **5.3** — offline shows `—`, never `0.00`
-5. **7.5** — the `Deadhand` transaction with `MandateRevoked`
+4. **3.8** — reload plain `/app` and land back on your delegation
+5. **5.3** — offline shows `—`, never `0.00`
+6. **7.5** — the `Deadhand` transaction with `MandateRevoked`
 
 ---
 

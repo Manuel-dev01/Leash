@@ -12,8 +12,9 @@ import {
 } from "./state.js";
 import {
   addNetwork, onRightChain, REGISTRY, HANDLER, pub, registryAbi, handlerAbi,
-  erc20Abi, COLLATERAL, addrUrl, fmt, errName,
+  erc20Abi, COLLATERAL, addrUrl, fmt, errName, restoreAccount,
 } from "./chain.js";
+import { findMandate } from "./resume.js";
 import {
   setupScreen, bindSetup, limitsScreen, bindLimits, reviewScreen, bindReview,
   issueScreen, bindIssue, manageScreen, bindManage, monitorData, type MonitorData,
@@ -128,6 +129,22 @@ function render() {
   renderScreen();
 }
 subscribe(render);
+
+/**
+ * Resume once per account, whenever we learn who they are.
+ *
+ * boot() covers the already-authorized case, but someone who reloads and THEN
+ * presses connect learns their account after boot has finished. Without this
+ * they sit on step 1 with a delegation they cannot reach — the original bug,
+ * one click later.
+ */
+let resumedFor: string | null = null;
+subscribe(() => {
+  const a = state.account;
+  if (!a || state.mandateId || resumedFor === a.toLowerCase()) return;
+  resumedFor = a.toLowerCase();
+  void resumeMandate(false);
+});
 
 // ---- chain-side loading --------------------------------------------------
 
@@ -255,13 +272,68 @@ $("chip").addEventListener("click", async () => {
   }
 });
 
+/**
+ * Put the mandate in the URL once we know it.
+ *
+ * replaceState rather than pushState: this is the same place, described more
+ * precisely. It should not cost the user a press of the back button, and it
+ * makes the next reload instant rather than another backward scan.
+ */
+function stampUrl(id: bigint) {
+  try {
+    const u = new URL(location.href);
+    if (u.searchParams.get("m") === String(id)) return;
+    u.searchParams.set("m", String(id));
+    history.replaceState(null, "", u.toString());
+  } catch { /* a URL we cannot rewrite is cosmetic, not fatal. */ }
+}
+
+/**
+ * Reopen the delegation this account already has.
+ *
+ * Only when the URL did not name one: an explicit `?m=` is the user telling us
+ * which mandate they mean, and must always win over anything we infer.
+ */
+async function resumeMandate(navigate: boolean) {
+  if (state.mandateId || state.mandateParamError || !state.account) return;
+  const found = await findMandate(state.account, state.role);
+  if (!found) return;
+  if (!navigate) { set({ resumeOffer: found }); return; }
+  stampUrl(found);
+  set({
+    mandateId: found,
+    resumeOffer: null,
+    screen: state.role === "delegate" ? "trade" : "manage",
+  });
+  await refreshMandate();
+}
+
+/** Take up the offer. Bound where the offer renders. */
+export async function openResume(): Promise<void> {
+  const id = state.resumeOffer;
+  if (!id) return;
+  stampUrl(id);
+  set({
+    mandateId: id,
+    resumeOffer: null,
+    screen: state.role === "delegate" ? "trade" : "manage",
+  });
+  await refreshMandate();
+}
+
 async function boot() {
   render();
   try { state.onChain = await onRightChain(); } catch { /* no wallet yet */ }
+  // Who we already have permission to see. Silent — never prompts.
+  try {
+    const a = await restoreAccount();
+    if (a) state.account = a;
+  } catch { /* no wallet yet */ }
   render();
   void renderContext();
   await reloadMarkets();
   if (state.mandateId) await refreshMandate();
+  else void resumeMandate(true);
   setInterval(() => { if (state.mandateId) void refreshMandate(); }, 8000);
   setInterval(() => { void renderContext(); }, 30000);
 }

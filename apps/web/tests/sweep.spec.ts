@@ -257,6 +257,80 @@ test.describe("app — no wallet", () => {
   });
 });
 
+/**
+ * Reloading `/app` used to return a delegator to step 1 of a wizard they had
+ * already finished. The mandate id lived only in `?m=`, so closing the tab lost
+ * the delegation unless they had kept the link.
+ */
+test.describe("a delegation survives a reload", () => {
+  // Pre-authorized: this is someone coming BACK, whose wallet already trusts
+  // the origin. That is the state the bug was reported in.
+  const returning = (page: import("@playwright/test").Page) =>
+    injectWallet(page, DELEGATOR, { preAuthorized: true });
+
+  test("reopens the account's mandate with no ?m= in the URL", async ({ page }, info) => {
+    await returning(page);
+    await page.goto("/app.html");
+    await page.waitForTimeout(GRACE_MS + 4_000);
+
+    // The surface heading, not a step counter.
+    await expect(page.locator("#progress")).toContainText(/your delegation/i);
+    await expect(page.locator("#progress")).toContainText(/#\d+/);
+    // And the URL now names it, so the NEXT reload needs no lookup at all.
+    expect(page.url(), "resumed mandate was not stamped into the URL").toMatch(/[?&]m=\d+/);
+    expect(await stuck(page)).toEqual([]);
+    await shot(page, "resumed-delegation", info.project.name);
+  });
+
+  /**
+   * The regression this very feature caused: resuming fired when the account
+   * became known, so pressing connect on step 1 threw you out of the setup you
+   * had deliberately started and into your OLD delegation. Ten tests caught it.
+   * Connecting mid-flow may offer; it may not navigate.
+   */
+  test("connecting during setup offers the old delegation, never jumps to it", async ({ page }) => {
+    await injectWallet(page, DELEGATOR); // NOT pre-authorized: a fresh visit
+    await page.goto("/app.html");
+    await page.waitForTimeout(GRACE_MS);
+    await expect(page.locator("#progress")).toContainText(/step 1 of 4/i);
+
+    await page.locator("#d-connect").click();
+    await page.waitForTimeout(6_000);
+
+    // Still exactly where they chose to be.
+    await expect(page.locator("#progress")).toContainText(/step 1 of 4/i);
+    expect(page.url(), "connecting rewrote the URL to an old mandate").not.toMatch(/[?&]m=\d/);
+
+    // But the old delegation is reachable, and taking the offer works.
+    const offer = page.locator("#d-resume");
+    await expect(offer).toBeVisible();
+    await offer.click();
+    await page.waitForTimeout(4_000);
+    await expect(page.locator("#progress")).toContainText(/your delegation/i);
+  });
+
+  test("an explicit ?m= always wins over the one we would have found", async ({ page }) => {
+    await returning(page);
+    await page.goto("/app.html?m=151");
+    await page.waitForTimeout(GRACE_MS);
+    await expect(page.locator("#progress")).toContainText("#151");
+    expect(page.url()).toContain("m=151");
+  });
+
+  test("setting up another delegation leaves the old one behind", async ({ page }) => {
+    await returning(page);
+    await page.goto("/app.html");
+    await page.waitForTimeout(GRACE_MS + 4_000);
+    await expect(page.locator("#progress")).toContainText(/your delegation/i);
+
+    await page.locator("#m-new").click();
+    await page.waitForTimeout(1_000);
+    await expect(page.locator("#progress")).toContainText(/step 1 of 4/i);
+    // If ?m= survived, the next render would reopen exactly what we just left.
+    expect(page.url(), "the old mandate is still named in the URL").not.toMatch(/[?&]m=\d/);
+  });
+});
+
 test.describe("app — wallet present", () => {
   test("connect advances and the chain chip reflects the network", async ({ page }, info) => {
     const p = watch(page);

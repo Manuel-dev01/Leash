@@ -11,6 +11,8 @@ import {
   pub, wallet, connect, addNetwork, onRightChain, registryAbi, erc20Abi,
   REGISTRY, COLLATERAL, txUrl, fmt, errName,
 } from "../chain.js";
+import { rememberMandate, forgetMandate } from "../resume.js";
+import { openResume } from "../app.js";
 import { state, set, go, staleness } from "../state.js";
 import { qrSvg } from "../qr.js";
 import { reloadMarkets } from "../markets.js";
@@ -79,11 +81,22 @@ export function setupScreen(): string {
     err(),
     '<button id="d-next" class="btn accent"' + (connected ? "" : " disabled") + ">" +
       (connected ? "set the limits &rarr;" : "connect first") + "</button>",
+    // An offer, below the primary action and never in front of it. You are on
+    // this screen because you want a NEW delegation; you may simply not have
+    // realised the old one is still reachable.
+    state.resumeOffer
+      ? '<div class="sep" style="display:flex;flex-direction:column;gap:7px">' +
+        '<span class="hint">you already have a delegation on this wallet &mdash; mandate #' +
+        String(state.resumeOffer) + ", still on chain.</span>" +
+        '<button id="d-resume" class="btn ghost">open mandate #' + String(state.resumeOffer) + " &rarr;</button>" +
+        "</div>"
+      : "",
     "</div>",
   ].join("");
 }
 
 export function bindSetup(): void {
+  document.getElementById("d-resume")?.addEventListener("click", () => { void openResume(); });
   document.getElementById("d-addnet")?.addEventListener("click", async () => {
     try {
       await addNetwork();
@@ -332,6 +345,9 @@ export function bindReview(): void {
       say("waiting for confirmation…");
       const r = await pub.waitForTransactionReceipt({ hash });
       if (r.status !== "success") throw new Error("mandate transaction reverted");
+      // Record the pointer immediately. Otherwise the FIRST reload after
+      // creating a mandate is the one that has to scan for it.
+      if (state.account) rememberMandate(state.account, next);
       set({ busy: false, mandateId: next, screen: "issue" });
     } catch (e) {
       set({ busy: false, error: errName(e) });
@@ -505,6 +521,10 @@ export function manageScreen(d: MonitorData | null): string {
     err(),
     '<div class="sep" style="display:flex;flex-direction:column;gap:8px">',
     '<button id="m-link" class="btn ghost">show the link again</button>',
+    // With the app now reopening your delegation automatically, this is the
+    // only way back into setup — without it a delegator with one mandate can
+    // never create a second.
+    '<button id="m-new" class="btn ghost">set up another delegation</button>',
     '<button id="m-revoke" class="btn accent"' + (state.busy || !state.account ? " disabled" : "") + ">" +
       (state.busy ? "ending it…" : "end this delegation") + "</button>",
     !state.account ? '<span class="hint">connect the wallet that created it to end it — only the delegator can.</span>' : "",
@@ -516,6 +536,18 @@ export function manageScreen(d: MonitorData | null): string {
 }
 
 export function bindManage(): void {
+  document.getElementById("m-new")?.addEventListener("click", () => {
+    // The URL and the stored pointer both name the old mandate. Leave either in
+    // place and the next render (or the next reload) reopens it.
+    if (state.account) forgetMandate(state.account);
+    try {
+      const u = new URL(location.href);
+      u.searchParams.delete("m");
+      history.replaceState(null, "", u.toString());
+    } catch { /* cosmetic */ }
+    set({ mandateId: null, allowedKnown: false, chainAt: 0 });
+    go("setup");
+  });
   document.getElementById("m-start")?.addEventListener("click", () => go("setup"));
   document.getElementById("m-link")?.addEventListener("click", () => go("issue"));
   document.getElementById("m-revoke")?.addEventListener("click", async () => {

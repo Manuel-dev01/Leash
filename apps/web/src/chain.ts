@@ -7,6 +7,7 @@
  */
 import {
   createPublicClient, createWalletClient, custom, http, parseAbi,
+  BaseError, ContractFunctionRevertedError, UserRejectedRequestError,
   type Address, type Hex,
 } from "viem";
 
@@ -77,6 +78,26 @@ type Eth = { request(a: { method: string; params?: unknown[] }): Promise<unknown
 export const eth = (): Eth | null =>
   (globalThis as unknown as { ethereum?: Eth }).ethereum ?? null;
 
+/**
+ * The account we are ALREADY authorized for, without prompting.
+ *
+ * `eth_accounts` returns the connected account if the user has previously
+ * approved this origin, and an empty array otherwise — unlike
+ * `eth_requestAccounts`, it never opens the wallet. Without this the app
+ * forgets who you are on every reload, which is what made a returning
+ * delegator land on step 1 of a wizard they had already finished.
+ */
+export async function restoreAccount(): Promise<Address | null> {
+  const e = eth();
+  if (!e) return null;
+  try {
+    const accounts = (await e.request({ method: "eth_accounts" })) as Address[];
+    return accounts[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function connect(): Promise<Address> {
   const e = eth();
   if (!e) throw new Error("No wallet found. Open this in a wallet browser, or install MetaMask.");
@@ -139,12 +160,38 @@ export const toRaw = (human: string, dp = 6): bigint => {
 };
 
 /** Turn a viem error into the contract error name, so the UI can be specific. */
+/**
+ * The name of the custom error a call actually reverted with.
+ *
+ * This used to `JSON.stringify` the whole error and substring-match the error
+ * names against it. viem attaches the ABI to its errors, so EVERY name in that
+ * list appears in the serialization of any contract error - and the first one
+ * checked, `NotDelegator`, was returned for anything at all, including a user
+ * simply rejecting in their wallet.
+ *
+ * That is not a cosmetic mislabel. `refusal()` on the delegate screen turns
+ * this name into a sentence about WHICH limit stopped the order, so a
+ * per-order-cap breach could be reported as "this market is not on the
+ * mandate". The product's whole claim is that it reports what the contract
+ * said; saying the wrong thing confidently is worse than saying nothing.
+ *
+ * viem already decodes this properly. Walk the error chain and ask it.
+ */
 export function errName(e: unknown): string {
-  const s = JSON.stringify(e, (_k, v) => (typeof v === "bigint" ? v.toString() : v));
-  for (const n of ["NotDelegator", "NotDelegate", "Revoked", "Expired",
-                   "MarketNotAllowed", "StakeExceedsPerTrade", "ExceedsCumulative"]) {
-    if (s.includes(n)) return n;
+  if (e instanceof BaseError) {
+    if (e.walk((x) => x instanceof UserRejectedRequestError)) {
+      return "you rejected the request in your wallet.";
+    }
+    const reverted = e.walk((x) => x instanceof ContractFunctionRevertedError);
+    if (reverted instanceof ContractFunctionRevertedError) {
+      // errorName is the decoded custom error; reason covers require(...).
+      const name = reverted.data?.errorName ?? reverted.reason;
+      if (name) return name;
+    }
+    return (e.shortMessage || e.message).split(/\r?\n/)[0] ?? "Transaction failed";
   }
-  const m = (e as { shortMessage?: string; message?: string });
-  return (m.shortMessage ?? m.message ?? "Transaction failed").split("\n")[0] ?? "Transaction failed";
+  // The provider layer, before viem wraps it. 4001 is EIP-1193 "user rejected".
+  const raw = e as { code?: number; shortMessage?: string; message?: string };
+  if (raw?.code === 4001) return "you rejected the request in your wallet.";
+  return (raw?.shortMessage ?? raw?.message ?? "Transaction failed").split(/\r?\n/)[0] ?? "Transaction failed";
 }
