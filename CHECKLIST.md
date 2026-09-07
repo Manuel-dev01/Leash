@@ -73,7 +73,7 @@ rationale anywhere on the page.**
 | 2.1 | Read the first line | **“let someone trade for you. keep your money.”** — not “connect wallet” |
 | 2.2 | Look at the bottom button | Reads **`connect first`**, and is **grey/muted — never red** |
 | 2.3 | Click **`connect wallet`** | Approve in wallet; button is replaced by your address |
-| 2.4 | Wrong network? | Connecting adds/switches it for you; topbar shows **`network ready`** |
+| 2.4 | If your wallet was on a different chain, look at the topbar after connecting | Connecting adds and switches the network for you; the topbar reads **`network ready`** |
 | 2.5 | Type `abc` in the address field, click **`set the limits →`** | `that is not a 20-byte wallet address` |
 | 2.6 | Keep typing | Error **clears as you type**, not on the next click |
 | 2.7 | Paste **B's address** → **`set the limits →`** | Advances; header reads `step 2 of 4 · the limits` |
@@ -83,9 +83,9 @@ rationale anywhere on the page.**
 | # | Do | Expect |
 |---|---|---|
 | 2.8 | Click **`← back`** | Returns to step 1 with **the address still filled in** |
-| 2.9 | Forward again, then **drag** each of the three sliders | Number tracks the drag smoothly; **does not stop after one step** |
-| 2.10 | Tab to a slider, press arrow keys | Value steps; focus stays on the slider |
-| 2.11 | Read a market row | `BTC · resolves in 4m` on the left, `on`/`off` on the right — **never `4mon`** |
+| 2.9 | Forward again, then **drag** each of the three sliders with the mouse | The number tracks the drag smoothly and **does not stop after one step** |
+| 2.10 | Click a slider handle, then press the **&larr; and &rarr; keys on your keyboard** (there are no arrow buttons on screen — this is a keyboard test) | The number steps by one on each press, and **keeps** stepping. If only the first press works, the screen is re-rendering and dropping focus |
+| 2.11 | Read a market row | `BTC · resolves in 45m` — asset, then a **minutes** figure that counts down. `on`/`off` sits on the right. The failure to watch for is the two halves colliding into one word, `4mon`, which is a lost layout, not a unit |
 | 2.12 | Toggle one off, then **`review →`** | Advances; count updated |
 | 2.13 | Go back, toggle **all** off, **`review →`** | `pick at least one market`; stays put |
 
@@ -180,7 +180,7 @@ delegator view.
 | 6.1 | **Content in the first screenful.** Heading around 120px down, not 600 |
 | 6.2 | **No horizontal scrolling on any screen** |
 | 6.3 | The QR is large enough for a second phone to scan |
-| 6.4 | Tapping a field does **not** zoom the viewport |
+| 6.4 | Tapping the address field does **not** zoom the page in (an iOS habit when a font is under 16px) |
 | 6.5 | Long errors **wrap** — never clipped mid-sentence |
 | 6.6 | `viewing as` role switch sits at the **bottom** |
 

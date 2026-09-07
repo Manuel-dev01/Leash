@@ -214,6 +214,47 @@ test.describe("app — no wallet", () => {
 
     expect(p.pageerrors).toEqual([]);
   });
+
+  /**
+   * Every slider is keyboard-operable and KEEPS focus while stepping.
+   *
+   * This is the one that a re-render breaks invisibly: set() replaces the
+   * screen's innerHTML, which destroys the focused range input, so the first
+   * arrow press works, focus lands on <body>, and every press after that does
+   * nothing. It looks like a stuck slider, not like a focus bug. The bindings
+   * update the readout node instead of re-rendering, and this proves it.
+   */
+  test("sliders step from the keyboard and keep focus", async ({ page }) => {
+    await injectWallet(page, DELEGATOR);
+    await page.goto("/app.html");
+    await page.waitForTimeout(GRACE_MS);
+    await page.locator("#d-connect").click();
+    await page.waitForTimeout(1_200);
+    await page.locator("#d-addr").fill(DELEGATE);
+    await page.locator("#d-next").click();
+    await page.waitForTimeout(600);
+
+    for (const id of ["s-budget", "s-order", "s-days"]) {
+      const el = page.locator(`#${id}`);
+      await el.focus();
+      const before = Number(await el.inputValue());
+      // Three presses, not one: one press can succeed against a screen that
+      // then re-renders and drops focus, which is exactly the failure mode.
+      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("ArrowRight");
+      await page.keyboard.press("ArrowRight");
+      const after = Number(await el.inputValue());
+      expect(after, `#${id} did not step on ArrowRight`).toBeGreaterThan(before);
+
+      const focused = await page.evaluate(() => document.activeElement?.id ?? "");
+      expect(focused, `#${id} lost focus while stepping`).toBe(id);
+
+      // The visible readout must agree with the input, or the number on screen
+      // is not the number that will be signed.
+      const out = await page.locator(`#${id}-out`).innerText();
+      expect(Number(out), `#${id} readout disagrees with the slider`).toBe(after);
+    }
+  });
 });
 
 test.describe("app — wallet present", () => {
