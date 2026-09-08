@@ -750,6 +750,13 @@ async function main() {
     // Adding new assertive copy then requires a deliberate decision instead of
     // happening by accident in a hurry the night before a demo.
     const VETTED = new Map<string, string>([
+      ['<span class="hint">markets resolve every few minutes, so the ones you picked have closed. this does not change any spending limit.</span>',
+        "setMarkets writes only allowedMarket[][]; maxStakePerTrade/maxCumulativeExposure/expiry are untouched — " +
+        "test_setMarketsCannotMoveAnyMoneyLimit and test_wideningDoesNotRaiseTheSpendingCap"],
+      ['<span class="hint">these markets resolve every few minutes, so the ones this mandate names have already closed. the delegator can point it at the markets trading now from their own screen — the spending limits do not change.</span>',
+        "same: setMarkets is delegator-only (test_delegateCannotWidenTheirOwnMandate) and moves no money limit"],
+      ["that transaction reverted — nothing changed.",
+        "rendered only when receipt.status !== 'success'; a reverted tx changes no state by definition"],
       ["leash — a trading key that cannot steal", "no withdraw() entry point exists: claim delegate-cannot-take"],
       ["nothing else. the money never leaves your wallet, and the only address it can be withdrawn to is yours.",
         "_returnTo/_sweep pay only mandates[id].delegator; claim registry-holds-no-funds"],

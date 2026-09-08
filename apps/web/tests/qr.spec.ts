@@ -34,7 +34,7 @@ test("reed-solomon matches the published 1-M vector", () => {
 const CASES = [
   "HELLO",
   "https://leash-rho.vercel.app/app.html?role=delegate&m=42",
-  "https://leash-rho.vercel.app/app.html?role=delegate&m=147&r=0xA16e6647708E03D0692Aef98e485e7eB1139B080",
+  "https://leash-rho.vercel.app/app.html?role=delegate&m=147&r=0x105e7732DE6D2E8C43e5803F8Df0D2d4860E7679",
   "a".repeat(120),
 ];
 

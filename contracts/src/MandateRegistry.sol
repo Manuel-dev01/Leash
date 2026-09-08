@@ -327,6 +327,13 @@ contract MandateRegistry {
 
         address delegator = m.delegator;
 
+        // What this contract held BEFORE this order touched anything. Every
+        // token here belongs to someone else: escrow a pool returned for
+        // another mandate, or a booked refund waiting to be claimed. The sweep
+        // at the end of this function returns only what THIS order brought in
+        // and did not spend, measured against this line.
+        uint256 balBefore = collateral.balanceOf(address(this));
+
         // Pull just-in-time. The principal was never ours until this instant.
         _pull(delegator, cost);
 
@@ -357,8 +364,26 @@ contract MandateRegistry {
 
         emit OrderPlacedFor(mandateId, marketId, pool, orderId, uint128(cost), m.usedExposure);
 
-        // Sweep. Whatever the pool did not take goes straight back.
-        _sweep(delegator);
+        // Sweep THIS ORDER'S residual, and nothing else.
+        //
+        // This used to return `balance - (totalOwed + totalRefundClaim)`: every
+        // token above a global floor, on the assumption that anything not
+        // accounted for must belong to the caller. It does not. The floor was
+        // wrong once already (it omitted refund claims, so one delegator's
+        // booked refund left with another's order), and a floor that has to be
+        // exactly right to avoid paying the wrong person is the wrong shape.
+        //
+        // Measured instead: balance now, minus balance before the pull. That is
+        // precisely what this transaction brought in and the pool declined to
+        // take. Money that was already here is untouched BY CONSTRUCTION rather
+        // than by arithmetic that has to be maintained.
+        //
+        // Capped at `cost`, so a transfer that lands mid-call from somewhere
+        // else cannot be paid out as this order's change.
+        uint256 balAfter = collateral.balanceOf(address(this));
+        uint256 residual = balAfter > balBefore ? balAfter - balBefore : 0;
+        if (residual > cost) residual = cost;
+        if (residual > 0) _returnTo(delegator, residual);
     }
 
     // ---- settlement --------------------------------------------------------
@@ -572,25 +597,12 @@ contract MandateRegistry {
      * the same reason we read order ids from receipts. Anything left here after
      * this call is a bug, and the test suite says so.
      */
-    /**
-     * Return whatever is not spoken for to `to`.
-     *
-     * `keep` MUST include `totalRefundClaim`. Keeping only `totalOwed` swept
-     * delegator A's booked refund out to delegator B on B's next order:
-     * misattribution, not stranding - the money left to the wrong party while
-     * A's claim stayed booked and unbacked forever.
-     *
-     * `holdsNoFunds()` could not see it. It asserts balance <= owed + claims,
-     * so a misallocation LOWERS the balance and the check passes MORE easily
-     * the worse the bug gets. That is why `claimsAreBacked()` exists below: a
-     * ceiling without a floor only ever catches half the ways this can break.
-     */
-    function _sweep(address to) private {
-        uint256 bal = collateral.balanceOf(address(this));
-        uint256 keep = totalOwed + totalRefundClaim;
-        if (bal <= keep) return;
-        _returnTo(to, bal - keep);
-    }
+    // `_sweep(to)` lived here: return `balance - (totalOwed + totalRefundClaim)`
+    // to whoever placed the order. It is gone rather than fixed. Sweeping by
+    // subtracting a global floor means the floor has to enumerate every claim
+    // anyone else has on this contract, forever, and being one term short paid
+    // one delegator's refund to another. `placeForDelegator` now measures its
+    // own residual instead, so no floor has to be maintained at all.
 
     /**
      * A delegator that cannot receive its own collateral must not be able to
@@ -646,20 +658,27 @@ contract MandateRegistry {
     }
 
     /**
-     * The FLOOR: every claim this contract has booked is covered by what it
-     * holds.
+     * A DIAGNOSTIC, deliberately not called an invariant.
      *
-     * `holdsNoFunds()` is the ceiling - nothing here is unattributed. Alone it
-     * is satisfied by a contract holding too LITTLE, which is exactly the shape
-     * of the `_sweep` defect: a misallocation lowers the balance, so the
-     * ceiling passed MORE easily the worse the bug got.
+     * True when what this contract holds covers everything it has booked. It is
+     * legitimately false in two situations, and publishing it as a guarantee
+     * would be claiming something the contract does not deliver:
      *
-     * ⚠️ NOT true at every instant, and saying otherwise would be a claim this
-     * contract cannot keep. Settlement books a claim while the POOL still holds
-     * the proceeds, so between `settleOne` and the money arriving the balance
-     * is legitimately below the booked total. `unbackedClaims()` measures that
-     * gap. What IS invariant is that a sweep never widens it - see
-     * `test_sweepDoesNotPayOneDelegatorsRefundToAnother`.
+     *  1. Between `settleOne` booking a claim and the pool returning the
+     *     proceeds, which is asynchronous.
+     *  2. Permanently, when a claim was booked for collateral that is never
+     *     coming back. `settleOne` books `release = r.reserved` — the WHOLE
+     *     escrow — but a pool keeps what a fill consumed, and a losing position
+     *     at resolution returns nothing at all. Measured on the live venue:
+     *     eight mandates, 0.02 tUSDC booked each, nothing returned.
+     *
+     * (2) is a real accounting gap and it is stated here rather than hidden
+     * behind a view that reads "true" often enough to look like a promise. What
+     * the contract DOES guarantee is narrower and structural: a sweep returns
+     * only the residual of the order that created it, so no delegator's
+     * collateral can leave with another delegator's transaction. That is
+     * `test_collateralHeldForOthersSurvivesAnUnrelatedOrder`, and it holds even
+     * when the numbers below are wrong.
      */
     function claimsAreBacked() external view returns (bool) {
         return collateral.balanceOf(address(this)) >= totalOwed + totalRefundClaim;

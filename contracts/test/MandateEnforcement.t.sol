@@ -719,4 +719,66 @@ contract MandateEnforcementTest is Test {
         vm.expectRevert(MandateRegistry.NoMandate.selector);
         reg.setMarkets(9999, _ids(MARKET), true);
     }
+
+    // ---- residual attribution: safety without arithmetic to maintain -------
+
+    /**
+     * The property the global-floor sweep could never have: money sitting in
+     * this contract for someone else is untouched by another order EVEN IF the
+     * bookkeeping that was supposed to protect it is wrong.
+     *
+     * Here the claim is deliberately UNDER-booked to zero by settling nothing —
+     * the collateral is simply present. Under the old `_sweep` this was
+     * indistinguishable from "change nobody claimed" and left with the next
+     * order. Now it is measured against the balance at the start of the call,
+     * so it cannot.
+     */
+    function test_collateralHeldForOthersSurvivesAnUnrelatedOrder() public {
+        address other = address(0xA11CE);
+        uint256 idB = _mandateFor(other, 1_000_000, 10_000_000);
+
+        // Someone else's escrow, returned by a pool, sitting here unclaimed.
+        // No claim is booked for it: the arithmetic that would have protected
+        // it does not exist.
+        usdc.mint(address(reg), 750_000);
+        assertEq(reg.totalRefundClaim(), 0, "nothing books this money");
+
+        pool.setConsumeBps(10_000);
+        uint256 bBefore = usdc.balanceOf(other);
+        vm.prank(other);
+        reg.placeForDelegator(idB, MARKET, address(pool), 0, 500_000, 1_000_000, uint64(block.timestamp + 60));
+
+        assertEq(bBefore - usdc.balanceOf(other), 500_000, "B took someone else's collateral as change");
+        assertEq(usdc.balanceOf(address(reg)), 750_000, "the stranded collateral moved");
+    }
+
+    /// The residual returned is exactly what the pool declined to take.
+    function test_residualReturnedIsExactlyWhatThePoolDidNotTake() public {
+        uint256 id = _mandate(1_000_000, 10_000_000);
+        pool.setConsumeBps(4_000); // pool keeps 40%
+
+        uint256 before = usdc.balanceOf(delegator);
+        _place(id, 1_000_000, 1_000_000); // cost 1_000_000
+        uint256 spent = before - usdc.balanceOf(delegator);
+
+        assertEq(spent, 400_000, "delegator paid more than the pool consumed");
+        assertEq(usdc.balanceOf(address(reg)), 0, "nothing left resting in the router");
+    }
+
+    /**
+     * A sweep can never pay out more than the order brought in, even if a
+     * transfer lands mid-call. Belt to the braces of measuring the delta.
+     */
+    function test_sweepIsCappedAtTheOrdersOwnCost() public {
+        uint256 id = _mandate(1_000_000, 10_000_000);
+        pool.setConsumeBps(0); // pool takes nothing: residual == full cost
+        usdc.mint(address(reg), 5_000_000); // a large unrelated balance
+
+        uint256 before = usdc.balanceOf(delegator);
+        _place(id, 1_000_000, 1_000_000);
+        uint256 net = before - usdc.balanceOf(delegator);
+
+        assertEq(net, 0, "delegator got back exactly its own cost, no more");
+        assertEq(usdc.balanceOf(address(reg)), 5_000_000, "the unrelated balance is untouched");
+    }
 }

@@ -25,9 +25,9 @@ const ENV = (import.meta as unknown as { env?: Record<string, string> }).env ?? 
 export const REGISTRY: string =
   new URLSearchParams(globalThis.location?.search ?? "").get("r") ??
   ENV.VITE_REGISTRY ??
-  "0xA16e6647708E03D0692Aef98e485e7eB1139B080";
+  "0x105e7732DE6D2E8C43e5803F8Df0D2d4860E7679";
 export const HANDLER: string =
-  ENV.VITE_HANDLER ?? "0x30CA328D051BcB3341d97C24988d872707a26D94";
+  ENV.VITE_HANDLER ?? "0x66D1D983e89a7eCb4bCFf535A348C59086B686Ad";
 
 export const chain = {
   id: CHAIN_ID,

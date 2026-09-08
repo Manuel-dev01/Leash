@@ -1,4 +1,5 @@
 import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
+import { liveMandate } from "./onchain.js";
 import { injectWallet, injectWrongChainWallet, DELEGATOR, DELEGATE } from "./wallet.js";
 import { mkdirSync } from "node:fs";
 
@@ -310,11 +311,12 @@ test.describe("a delegation survives a reload", () => {
   });
 
   test("an explicit ?m= always wins over the one we would have found", async ({ page }) => {
+    const { id } = await liveMandate();
     await returning(page);
-    await page.goto("/app.html?m=151");
+    await page.goto(`/app.html?m=${id}`);
     await page.waitForTimeout(GRACE_MS);
-    await expect(page.locator("#progress")).toContainText("#151");
-    expect(page.url()).toContain("m=151");
+    await expect(page.locator("#progress")).toContainText(`#${id}`);
+    expect(page.url()).toContain(`m=${id}`);
   });
 
   test("setting up another delegation leaves the old one behind", async ({ page }) => {
@@ -345,7 +347,8 @@ test.describe("a delegation survives a reload", () => {
 test.describe("the wallet can change identity underneath the page", () => {
   test("switching accounts is noticed, and the delegate becomes the delegate", async ({ page }) => {
     await injectWallet(page, DELEGATOR, { preAuthorized: true });
-    await page.goto("/app.html?role=delegate&m=152");
+    const { id } = await liveMandate();
+    await page.goto(`/app.html?role=delegate&m=${id}`);
     await page.waitForTimeout(GRACE_MS + 3_000);
 
     // As the delegator, on the delegate's screen: refused, and SAID so up front.
@@ -554,7 +557,7 @@ test.describe("links actually work", () => {
     // The registry address must be inside the anchor, not beside it.
     const ex = links.find((l) => l.href.includes("shannon-explorer"));
     expect(ex, "no explorer link found").toBeTruthy();
-    expect(ex!.href).toContain("0xA16e6647708E03D0692Aef98e485e7eB1139B080");
+    expect(ex!.href).toContain("0x105e7732DE6D2E8C43e5803F8Df0D2d4860E7679");
     expect(ex!.text, `explorer link reads "${ex!.text}" — the address should be the clickable text`)
       .toMatch(/0x7ca9/i);
   });

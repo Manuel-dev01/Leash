@@ -30,8 +30,8 @@
     "explorer": "https://shannon-explorer.somnia.network"
   },
   "deployed": {
-    "MandateRegistry": "0xA16e6647708E03D0692Aef98e485e7eB1139B080",
-    "DeadhandHandler": "0x30CA328D051BcB3341d97C24988d872707a26D94",
+    "MandateRegistry": "0x105e7732DE6D2E8C43e5803F8Df0D2d4860E7679",
+    "DeadhandHandler": "0x66D1D983e89a7eCb4bCFf535A348C59086B686Ad",
     "collateral": "0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E",
     "binaryModule": "0x3ecC694Cef705358864a646142ac17A90E29e388",
     "$comment": "The handler was redeployed on 5 Sep to add the H1 instrumentation. The previous one (0xDED8c0bE939cCe19f27176E5F33deA7b2A4DE35C) is drained and dead; nothing should reference it."

@@ -4,8 +4,8 @@ Answered in writing, as Stage 5 requires, on 6 Sep against the deployed build.
 Written to be read by someone trying to break the submission, not to reassure
 anyone. Where the honest answer is "this is a real weakness", it says so.
 
-Registry `0xA16e6647708E03D0692Aef98e485e7eB1139B080` ·
-handler `0x30CA328D051BcB3341d97C24988d872707a26D94`
+Registry `0x105e7732DE6D2E8C43e5803F8Df0D2d4860E7679` ·
+handler `0x66D1D983e89a7eCb4bCFf535A348C59086B686Ad`
 
 ---
 
