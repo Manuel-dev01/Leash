@@ -19,19 +19,28 @@ Anything describing `01 connect` / `02 choose_delegate` / `06 monitor` /
 
 | # | Do | Expect | If not |
 |---|---|---|---|
-| 0.1 | `npx tsx scripts/verify.ts` | `34 checks: 34 pass, 0 amber, 0 fail` | Any **FAIL** → stop |
-| 0.2 | Read any amber | On the current deployment there should be none | An amber naming a handler measurement means it needs re-proving |
+| 0.1 | `npx tsx scripts/verify.ts` | `34 checks: 33 pass, 1 amber, 0 fail` | Any **FAIL** → stop |
+| 0.2 | Read the amber | `delegators-paid`, and only that — see §8 | An amber naming a *handler measurement* is different: it means the deployed bytecode moved and the gas figures need re-proving |
 | 0.3 | `npm run ready` | `GO`, a market with ttl 200–900s | `WAIT` → next window ~5 min |
 | 0.4 | Open a **normal browser window**. Call it **A**. Connect the delegator wallet here | Has tUSDC + STT | |
 | 0.5 | Open a **second, separate window** — a different Chrome profile, or a different browser. Call it **B**. Connect the delegate wallet here | **≥ 0.3 STT** | Runs dry after ~10 orders |
 
-> **Why two windows.** A wallet extension can only expose one account per
-> profile, so the delegator and the delegate cannot both live in one window.
-> A is the person lending their money; B is the person trading it.
+> **Why two windows — and the shortcut.** MetaMask exposes **one active account
+> per browser profile**. Two tabs in the same profile are therefore the SAME
+> identity: switching the account switches it everywhere. Two separate profiles
+> (or two browsers) give you two real identities at once, which is what these
+> steps assume.
 >
-> **Sections 1, 2, 3 and 5 are all in window A. Section 4 is window B.** Each
-> section says which. If you ever have to switch windows mid-section to make
-> something work, that is a bug — note the step number.
+> **The shortcut:** you can do the whole run in ONE window by switching the
+> MetaMask account when a section changes hands. The app watches
+> `accountsChanged` and follows you — the "trading as" line updates without a
+> reload, and if you are on the wrong account for a mandate it says so by name
+> instead of letting you find out from a revert. Two profiles are still cleaner
+> for a recording, because both sides stay on screen.
+>
+> **Sections 1, 2, 3 and 5 are the delegator (A). Section 4 is the delegate
+> (B).** Each section says which. If you have to change identity mid-section to
+> make something work, that is a bug — note the step number.
 
 ---
 
@@ -203,7 +212,7 @@ delegator view.
 | 7.3 | Check the live column | `deadhand` reads `armed #N` |
 | 7.4 | Close both browsers | Nothing is running |
 | 7.5 | Wait for the market to resolve | `Deadhand` tx, `failed=0`, and `MandateRevoked(…, "deadhand")` |
-| 7.6 | `npm run collect` | `sweepRefunds` — delegator balance **rises**, triggered by the stranger key |
+| 7.6 | `npm run collect` | `sweepRefunds`, triggered by the **stranger** key. If the orders **rested** — which is the usual case — the delegator balance **rises**. If they filled, it pays 0 and the claim stays: see §8, that is expected, not a fault |
 | 7.7 | `npm run disarm` | **Always.** ~15 STT/day while armed |
 
 ---
@@ -214,26 +223,36 @@ delegator view.
 - **`no market is open right now`.** The venue runs six at a time; 3 of 20
   rehearsals hit a gap. It is the venue, not us.
 - **Refund claims outstanding while the registry holds 0.** `settleOne` books
-  the whole escrow as refundable, but a pool keeps what a fill consumed and a
-  losing position returns nothing. Known, documented limitation — `collect`
-  cannot clear these, and it no longer strands anything: the sweep returns only
-  its own order's residual, so nobody else's money is involved.
+  the whole escrow as refundable at resolution, and what happens next depends on
+  whether the order ever traded:
+  - **It rested** (the usual case) — the pool returns the escrow after a few
+    minutes and `collect` pays it out in full. Measured: 11 mandates, 0.22
+    tUSDC, cleared to zero.
+  - **It filled** — the stake became an outcome position, and the registry has
+    no interface to redeem one, so the claim never pays. Measured: 0.88 tUSDC
+    across 32 filled mandates. `knownLimitations: no-redeem-path`.
+
+  A single snapshot cannot tell these apart. Wait, run `collect`, look again.
+  Either way nobody else's money is involved — the sweep returns only its own
+  order's residual, so a stale claim strands nothing.
 - **`held by leash` non-zero mid-order.** Correct while an order is open; it
   sweeps back in the same transaction.
 - **`not checked yet`** on the allowed line, before the first on-chain check.
 
 ---
 
-## 9 · The five that actually matter
+## 9 · The ones that actually matter
 
-If you only do six things:
+If you only do seven things:
 
 1. **2.23** — scan the QR with a real camera
 2. **4.2** — the delegate connects without leaving their own screen
 3. **4.9 → 4.10** — place an order, watch the envelope drop
 4. **3.8** — reload plain `/app` and land back on your delegation
 5. **5.3** — offline shows `—`, never `0.00`
-6. **7.5** — the `Deadhand` transaction with `MandateRevoked`
+6. **3.5d** — re-point a stale mandate at the markets trading now, and confirm
+   the four limits above it did not move
+7. **7.5** — the `Deadhand` transaction with `MandateRevoked`
 
 ---
 
