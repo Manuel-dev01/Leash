@@ -166,6 +166,10 @@ subscribe(() => {
  * use to tell the reader how old the figures are.
  */
 let inFlight = false;
+/** Counts polls, so the allowed-market re-read can run at a lower rate. */
+let allowedTick = 0;
+/** Forces the next poll to re-read the allowed set. */
+export function invalidateAllowed(): void { allowedTick = 0; state.allowedKnown = false; }
 let generation = 0;
 async function refreshMandate(force = false) {
   // `force` is for identity changes: a poll already in flight is reading on
@@ -185,7 +189,14 @@ async function refreshMandate(force = false) {
     // Checked per market so one failing read cannot discard the rest. The
     // whole set used to be abandoned — along with mandate figures that had
     // already arrived — because of a single unrelated boolean.
-    if (fresh && state.markets.length > 0) {
+    // The allowed set changes only when the delegator calls setMarkets, but this
+    // re-read it for EVERY live market on EVERY 8-second poll — around sixty
+    // requests a minute times eight, against a public RPC. Chatty enough to be
+    // a demo risk in its own right (build spec §10). Re-read every fifth poll,
+    // and immediately whenever something in this tab could have changed it.
+    const dueForAllowed = allowedTick % 5 === 0 || !state.allowedKnown;
+    allowedTick++;
+    if (fresh && state.markets.length > 0 && dueForAllowed) {
       const allowed = new Set<string>();
       let checked = 0;
       // In parallel. Sequentially this was one round trip per live market -

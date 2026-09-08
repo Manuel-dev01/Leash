@@ -175,7 +175,7 @@
     },
     {
       "id": "validators-settle-a-batch-in-block",
-      "claim": "When a market resolves, validators invoke the handler and it settles every affected mandate in that block - releasing exposure, revoking breachers, and sweeping payouts to the delegator, who never traded. Measured at 3, 8 and 12 mandates in single invocations on the deployed bytecode.",
+      "claim": "When a market resolves, validators invoke the handler and it settles every affected mandate in that block - releasing exposure, revoking breachers, and sweeping the COLLATERAL RELEASED AT SETTLEMENT to the delegator, who never traded. Measured at 3, 8 and 12 mandates in single invocations on the deployed bytecode.",
       "appearsIn": [
         "README",
         "demo:beat3",
@@ -195,7 +195,8 @@
       "provenance": {
         "codeHash": "0x6ec80e8ac2d2676b7c3a4512561336b2ae3e464823f08aeb12af7dde1b504444",
         "checkedAt": "runtime"
-      }
+      },
+      "caveat": "'Payout' here is released collateral, NOT winnings. A filled order's stake has become an outcome position and the registry's IBinaryPool interface has no redeem path, so a winning position is never converted back. Does not affect the demo - binary books are quote-only and orders rest - but the claim must not imply winnings."
     },
     {
       "id": "batch-cap",

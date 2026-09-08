@@ -1,5 +1,6 @@
 import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
 import { liveMandate } from "./onchain.js";
+import { REGISTRY } from "../src/chain.js";
 import { injectWallet, injectWrongChainWallet, DELEGATOR, DELEGATE } from "./wallet.js";
 import { mkdirSync } from "node:fs";
 
@@ -557,9 +558,13 @@ test.describe("links actually work", () => {
     // The registry address must be inside the anchor, not beside it.
     const ex = links.find((l) => l.href.includes("shannon-explorer"));
     expect(ex, "no explorer link found").toBeTruthy();
-    expect(ex!.href).toContain("0x105e7732DE6D2E8C43e5803F8Df0D2d4860E7679");
+    // Derived from the app's own REGISTRY, never hardcoded. A previous version
+    // pinned the literal prefix "0x7ca9", which survived a redeploy because
+    // retarget.ts rewrites whole addresses and this was a fragment of one — so
+    // the test failed against a correct page.
+    expect(ex!.href).toContain(REGISTRY);
     expect(ex!.text, `explorer link reads "${ex!.text}" — the address should be the clickable text`)
-      .toMatch(/0x7ca9/i);
+      .toContain(REGISTRY.slice(0, 6));
   });
 
   test("the app's explorer links carry real addresses", async ({ page }) => {

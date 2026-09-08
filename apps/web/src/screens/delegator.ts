@@ -12,7 +12,7 @@ import {
   REGISTRY, COLLATERAL, txUrl, fmt, errName,
 } from "../chain.js";
 import { rememberMandate, forgetMandate } from "../resume.js";
-import { openResume } from "../app.js";
+import { openResume, invalidateAllowed } from "../app.js";
 import { state, set, go, staleness } from "../state.js";
 import { qrSvg } from "../qr.js";
 import { reloadMarkets } from "../markets.js";
@@ -606,6 +606,10 @@ export function bindManage(): void {
       });
       if (btn) btn.textContent = "waiting for confirmation…";
       const r = await pub.waitForTransactionReceipt({ hash });
+      // The allowed set just changed, so the cached answer is wrong by
+      // definition. Nothing else in this app is allowed to show a permission
+      // the contract does not currently grant.
+      if (r.status === "success") invalidateAllowed();
       set({
         busy: false,
         notice: r.status === "success"

@@ -119,7 +119,8 @@ entered anyone's custody — and which the mandate could have refused.
 ### 3. Can't overreach
 The delegate's order outlives the mandate that authorised it. When the market
 resolves, **validators invoke the handler and, in the same block, settle every
-affected mandate, revoke the breachers, and sweep the payout to the delegator** —
+affected mandate, revoke the breachers, and sweep the released collateral to
+the delegator** —
 a party who never traded.
 
 `onEvent` enforces `msg.sender == 0x0100` in the reactivity base contract, so a
@@ -225,6 +226,10 @@ holds even when the bookkeeping that was supposed to protect that money is
 absent, and against the old sweep it fails with an arithmetic underflow — the
 delegator ending up with more than they spent.
 
+#### What "payout" means here, precisely
+
+⚠️ **"Payout" means the collateral RELEASED AT SETTLEMENT, not winnings.** When a market resolves, escrow the pool did not consume comes back and is swept to the delegator — that is the money moving to the party who never traded, and it is real. But a FILLED order's stake has become an outcome position, and `IBinaryPool` as the registry declares it exposes only `placeBinaryOrder` and `cancelOrder` — **there is no redeem path**, so a winning position is never converted back. Found 8 Sep: 32 mandates whose orders filled left 0.88 tUSDC booked as refund claims against collateral still sitting in the pool. It does not affect the demo — binary books are quote-only and orders rest rather than fill (1 fill in ~100s measured) — but the word must not imply winnings.
+
 #### Refunds arrive late, and they do arrive
 
 `settleOne` books a claim the moment a market resolves, but the pool returns the
@@ -260,7 +265,8 @@ The surface similarity is real, so here is the difference in the order it
 matters:
 
 1. **The beneficiary is not the trader.** Their registry fires an order *for the
-   account that armed it*. Ours performs a permission change and sweeps a payout
+   account that armed it*. Ours performs a permission change and sweeps released
+   collateral
    **to the delegator, who never traded.** A stop-order registry has no
    vocabulary for returning funds to a third party.
 2. **The action is not an order.** It releases exposure, revokes breached
@@ -278,22 +284,31 @@ subscription can serve all of them and theirs structurally cannot.
 
 | Quantity | Value |
 |---|---|
-| Settle **3** mandates | 1,350,525 gas, `drained=true` |
-| Settle **12** mandates | 3,301,786 gas, `drained=true` |
-| Settle **32** mandates | 8,082,346 gas, `failed=0` |
-| Fitted cost | **~433,450 gas fixed + ~239,028 per mandate** (three points, one bytecode) |
+| Settle **3** mandates | 1,550,679 gas, `drained=true` |
+| Settle **12** mandates | 3,302,336 gas, `drained=true` |
+| Settle **32** mandates | **ran out of gas** — `DeadhandFailed`, nothing settled |
+| Fitted cost | **~966,795 gas fixed + ~194,628 per mandate** (n=3 and n=12, on the deployed bytecode) |
 | Wrapper overhead | **107,556 gas**, identical at every batch size |
 | Subscription `gasLimit` | **8,000,000** — forced by measurement; a 12-mandate settle does not fit under 3M |
-| **Batch cap** | **15**, 50% of where the budget binds (~31) |
+| **Batch cap** | **17** |
 
-The cap is load-bearing, not cautious: the 32-mandate settle cost 8,082,346 gas
-and would have **run out of gas** under the shipped limit. It only completed
-because that measurement run armed at 10M.
+The cap is load-bearing, and the fit is optimistic at the top. The n=32
+invocation was delivered and **failed**: `pendingSettlement` stayed at 32 and
+nothing settled, so the real cost there exceeds ~7.89M against a predicted
+7.19M. The two-point line **under-predicts at high n by at least 10%** — the
+second time a fit here has erred in the dangerous direction. Reading that
+ceiling as the slope puts binding near 32 rather than the fitted 35, which is
+why the cap is 17 and is not raised toward what the line alone suggests.
+
+Those 32 mandates were then settled from a stranger key in bounded slices — the
+same failure that bounds the cap is also the delete-test passing at full size.
 
 ### Cost, and why we do not say it is free
 
-Ignoring a finalization that is not ours costs **291,181 gas (0.001747086 STT)**,
-read from receipts and identical on every invocation — about **15.1 STT/day** to
+Ignoring a finalization that is not ours costs **0.00174709 STT (~256,924 gas
+at the observed 6.8 gwei)**,
+measured twice 20 minutes apart and identical to the wei, with receipts cited in
+`claims.json` — about **15.1 STT/day** to
 sit armed. That is not a rounding error, which is why the subscription is armed
 for demo windows and unsubscribed after.
 
