@@ -17,7 +17,8 @@ import {
 import { findMandate } from "./resume.js";
 import {
   setupScreen, bindSetup, limitsScreen, bindLimits, reviewScreen, bindReview,
-  issueScreen, bindIssue, manageScreen, bindManage, monitorData, type MonitorData,
+  issueScreen, bindIssue, manageScreen, bindManage, monitorData, paintResumeOffer,
+  type MonitorData,
 } from "./screens/delegator.js";
 import { tradeScreen, bindTrade } from "./screens/delegate.js";
 import { reloadMarkets } from "./markets.js";
@@ -298,7 +299,13 @@ async function resumeMandate(navigate: boolean) {
   if (state.mandateId || state.mandateParamError || !state.account) return;
   const found = await findMandate(state.account, state.role);
   if (!found) return;
-  if (!navigate) { set({ resumeOffer: found }); return; }
+  if (!navigate) {
+    // Deliberately NOT set(): a re-render here replaces the screen while the
+    // user is mid-click. Write the field and paint the one node that changed.
+    state.resumeOffer = found;
+    paintResumeOffer();
+    return;
+  }
   stampUrl(found);
   set({
     mandateId: found,

@@ -1,0 +1,104 @@
+
+Running 66 tests using 1 worker
+
+  ok  1 [desktop] › apps\web\tests\errname.spec.ts:18:1 › does not read an error name out of the ABI attached to the error (15ms)
+  ok  2 [desktop] › apps\web\tests\errname.spec.ts:36:1 › names a real revert by the error the contract actually raised (2ms)
+  ok  3 [desktop] › apps\web\tests\errname.spec.ts:56:1 › reports a wallet rejection as a rejection, not as a limit (1ms)
+  ok  4 [desktop] › apps\web\tests\errname.spec.ts:67:1 › falls back to a readable first line, never an empty string (2ms)
+  ok  5 [desktop] › apps\web\tests\qr.spec.ts:29:1 › reed-solomon matches the published 1-M vector (3ms)
+  ok  6 [desktop] › apps\web\tests\qr.spec.ts:42:3 › round-trips 5 bytes through an independent decoder (33ms)
+  ok  7 [desktop] › apps\web\tests\qr.spec.ts:42:3 › round-trips 56 bytes through an independent decoder (19ms)
+  ok  8 [desktop] › apps\web\tests\qr.spec.ts:42:3 › round-trips 102 bytes through an independent decoder (19ms)
+  ok  9 [desktop] › apps\web\tests\qr.spec.ts:42:3 › round-trips 120 bytes through an independent decoder (20ms)
+  ok 10 [desktop] › apps\web\tests\qr.spec.ts:50:1 › refuses to silently truncate oversized input (7ms)
+  ok 11 [desktop] › apps\web\tests\sweep.spec.ts:92:3 › landing › renders, resolves its live stat, and has no overflow (3.9s)
+  ok 12 [desktop] › apps\web\tests\sweep.spec.ts:115:3 › landing › add-network button reports and recovers (6.5s)
+  ok 13 [desktop] › apps\web\tests\sweep.spec.ts:136:3 › app — no wallet › content comes before chrome on every viewport (29.1s)
+  ok 14 [desktop] › apps\web\tests\sweep.spec.ts:159:3 › app — no wallet › designer's notes are not shipped as product copy (5.5s)
+  ok 15 [desktop] › apps\web\tests\sweep.spec.ts:179:3 › app — no wallet › no screen numbers itself (6.3s)
+  ok 16 [desktop] › apps\web\tests\sweep.spec.ts:192:3 › app — no wallet › the whole setup flow walks forward and back (30.4s)
+  ok 17 [desktop] › apps\web\tests\sweep.spec.ts:227:3 › app — no wallet › sliders step from the keyboard and keep focus (30.2s)
+  ok 18 [desktop] › apps\web\tests\sweep.spec.ts:271:3 › a delegation survives a reload › reopens the account's mandate with no ?m= in the URL (34.1s)
+  ok 19 [desktop] › apps\web\tests\sweep.spec.ts:291:3 › a delegation survives a reload › connecting during setup offers the old delegation, never jumps to it (38.2s)
+  ok 20 [desktop] › apps\web\tests\sweep.spec.ts:312:3 › a delegation survives a reload › an explicit ?m= always wins over the one we would have found (27.7s)
+  ok 21 [desktop] › apps\web\tests\sweep.spec.ts:320:3 › a delegation survives a reload › setting up another delegation leaves the old one behind (33.5s)
+  ok 22 [desktop] › apps\web\tests\sweep.spec.ts:335:3 › app — wallet present › connect advances and the chain chip reflects the network (7.6s)
+  ok 23 [desktop] › apps\web\tests\sweep.spec.ts:350:3 › app — wallet present › a wallet on the wrong chain is reported, not ignored (6.4s)
+  x  24 [desktop] › apps\web\tests\sweep.spec.ts:358:3 › app — wallet present › a rejected signature surfaces an error and clears busy (1.5m)
+  ok 25 [desktop] › apps\web\tests\sweep.spec.ts:383:3 › negative cases › a malformed ?m= must not blank the page (6.3s)
+  ok 26 [desktop] › apps\web\tests\sweep.spec.ts:394:3 › negative cases › a delegate with no mandate is told so, not left reading (27.9s)
+  ok 27 [desktop] › apps\web\tests\sweep.spec.ts:402:3 › negative cases › a dead RPC shows an em dash, never a confident zero (4.0s)
+  ok 28 [desktop] › apps\web\tests\sweep.spec.ts:416:3 › negative cases › a dead RPC does not leave the app spinning (30.6s)
+  ok 29 [desktop] › apps\web\tests\sweep.spec.ts:436:3 › handoff › the issue screen produces a scannable link for a real mandate (11.7s)
+  ok 30 [desktop] › apps\web\tests\sweep.spec.ts:463:3 › handoff › a delegate opening that link sees the mandate, not a spinner (31.7s)
+  ok 31 [desktop] › apps\web\tests\sweep.spec.ts:474:3 › delegate can act without the delegator's screens › a delegate connects from their own role (13.3s)
+  ok 32 [desktop] › apps\web\tests\sweep.spec.ts:495:3 › links actually work › every link has a real destination, and the address IS the link (9.3s)
+  ok 33 [desktop] › apps\web\tests\sweep.spec.ts:521:3 › links actually work › the app's explorer links carry real addresses (15.1s)
+  ok 34 [mobile] › apps\web\tests\errname.spec.ts:18:1 › does not read an error name out of the ABI attached to the error (30ms)
+  ok 35 [mobile] › apps\web\tests\errname.spec.ts:36:1 › names a real revert by the error the contract actually raised (9ms)
+  ok 36 [mobile] › apps\web\tests\errname.spec.ts:56:1 › reports a wallet rejection as a rejection, not as a limit (7ms)
+  ok 37 [mobile] › apps\web\tests\errname.spec.ts:67:1 › falls back to a readable first line, never an empty string (8ms)
+  ok 38 [mobile] › apps\web\tests\qr.spec.ts:29:1 › reed-solomon matches the published 1-M vector (9ms)
+  ok 39 [mobile] › apps\web\tests\qr.spec.ts:42:3 › round-trips 5 bytes through an independent decoder (60ms)
+  ok 40 [mobile] › apps\web\tests\qr.spec.ts:42:3 › round-trips 56 bytes through an independent decoder (50ms)
+  ok 41 [mobile] › apps\web\tests\qr.spec.ts:42:3 › round-trips 102 bytes through an independent decoder (52ms)
+  ok 42 [mobile] › apps\web\tests\qr.spec.ts:42:3 › round-trips 120 bytes through an independent decoder (62ms)
+  ok 43 [mobile] › apps\web\tests\qr.spec.ts:50:1 › refuses to silently truncate oversized input (40ms)
+  ok 44 [mobile] › apps\web\tests\sweep.spec.ts:92:3 › landing › renders, resolves its live stat, and has no overflow (9.0s)
+  ok 45 [mobile] › apps\web\tests\sweep.spec.ts:115:3 › landing › add-network button reports and recovers (6.7s)
+  ok 46 [mobile] › apps\web\tests\sweep.spec.ts:136:3 › app — no wallet › content comes before chrome on every viewport (27.8s)
+  ok 47 [mobile] › apps\web\tests\sweep.spec.ts:159:3 › app — no wallet › designer's notes are not shipped as product copy (5.5s)
+  ok 48 [mobile] › apps\web\tests\sweep.spec.ts:179:3 › app — no wallet › no screen numbers itself (5.9s)
+  ok 49 [mobile] › apps\web\tests\sweep.spec.ts:192:3 › app — no wallet › the whole setup flow walks forward and back (30.0s)
+  ok 50 [mobile] › apps\web\tests\sweep.spec.ts:227:3 › app — no wallet › sliders step from the keyboard and keep focus (30.1s)
+  ok 51 [mobile] › apps\web\tests\sweep.spec.ts:271:3 › a delegation survives a reload › reopens the account's mandate with no ?m= in the URL (33.5s)
+  ok 52 [mobile] › apps\web\tests\sweep.spec.ts:291:3 › a delegation survives a reload › connecting during setup offers the old delegation, never jumps to it (38.5s)
+  ok 53 [mobile] › apps\web\tests\sweep.spec.ts:312:3 › a delegation survives a reload › an explicit ?m= always wins over the one we would have found (27.5s)
+  ok 54 [mobile] › apps\web\tests\sweep.spec.ts:320:3 › a delegation survives a reload › setting up another delegation leaves the old one behind (35.1s)
+  ok 55 [mobile] › apps\web\tests\sweep.spec.ts:335:3 › app — wallet present › connect advances and the chain chip reflects the network (6.5s)
+  ok 56 [mobile] › apps\web\tests\sweep.spec.ts:350:3 › app — wallet present › a wallet on the wrong chain is reported, not ignored (4.3s)
+  ok 57 [mobile] › apps\web\tests\sweep.spec.ts:358:3 › app — wallet present › a rejected signature surfaces an error and clears busy (12.4s)
+  ok 58 [mobile] › apps\web\tests\sweep.spec.ts:383:3 › negative cases › a malformed ?m= must not blank the page (5.2s)
+  ok 59 [mobile] › apps\web\tests\sweep.spec.ts:394:3 › negative cases › a delegate with no mandate is told so, not left reading (27.3s)
+  ok 60 [mobile] › apps\web\tests\sweep.spec.ts:402:3 › negative cases › a dead RPC shows an em dash, never a confident zero (3.2s)
+  ok 61 [mobile] › apps\web\tests\sweep.spec.ts:416:3 › negative cases › a dead RPC does not leave the app spinning (29.9s)
+  ok 62 [mobile] › apps\web\tests\sweep.spec.ts:436:3 › handoff › the issue screen produces a scannable link for a real mandate (8.3s)
+  ok 63 [mobile] › apps\web\tests\sweep.spec.ts:463:3 › handoff › a delegate opening that link sees the mandate, not a spinner (27.5s)
+  ok 64 [mobile] › apps\web\tests\sweep.spec.ts:474:3 › delegate can act without the delegator's screens › a delegate connects from their own role (10.2s)
+  ok 65 [mobile] › apps\web\tests\sweep.spec.ts:495:3 › links actually work › every link has a real destination, and the address IS the link (8.7s)
+  ok 66 [mobile] › apps\web\tests\sweep.spec.ts:521:3 › links actually work › the app's explorer links carry real addresses (14.6s)
+
+
+  1) [desktop] › apps\web\tests\sweep.spec.ts:358:3 › app — wallet present › a rejected signature surfaces an error and clears busy 
+
+    Test timeout of 90000ms exceeded.
+
+    Error: locator.click: Test timeout of 90000ms exceeded.
+    Call log:
+      - waiting for locator('#d-review')
+
+
+      365 |     await page.locator("#d-next").click();          // step 1 -> 2
+      366 |     await page.waitForTimeout(1_500);
+    > 367 |     await page.locator("#d-review").click();        // step 2 -> 3
+          |                                     ^
+      368 |     await page.waitForTimeout(800);
+      369 |     const sign = page.locator("#d-sign");
+      370 |     if (await sign.count()) {
+        at C:\Users\DELL 5420\Desktop\hackathons\Leash\apps\web\tests\sweep.spec.ts:367:37
+
+    Error Context: .artifacts\pw\sweep-app-—-wallet-present-542be-es-an-error-and-clears-busy-desktop\error-context.md
+
+    attachment #2: trace (application/zip) ─────────────────────────────────────────────────────────
+    .artifacts\pw\sweep-app-—-wallet-present-542be-es-an-error-and-clears-busy-desktop\trace.zip
+    Usage:
+
+        npx playwright show-trace .artifacts\pw\sweep-app-—-wallet-present-542be-es-an-error-and-clears-busy-desktop\trace.zip
+
+    ────────────────────────────────────────────────────────────────────────────────────────────────
+
+  Slow test file: [mobile] › apps\web\tests\sweep.spec.ts (6.8m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  1 failed
+    [desktop] › apps\web\tests\sweep.spec.ts:358:3 › app — wallet present › a rejected signature surfaces an error and clears busy 
+  65 passed (15.4m)

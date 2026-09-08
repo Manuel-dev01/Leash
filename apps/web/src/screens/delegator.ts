@@ -81,22 +81,39 @@ export function setupScreen(): string {
     err(),
     '<button id="d-next" class="btn accent"' + (connected ? "" : " disabled") + ">" +
       (connected ? "set the limits &rarr;" : "connect first") + "</button>",
-    // An offer, below the primary action and never in front of it. You are on
-    // this screen because you want a NEW delegation; you may simply not have
-    // realised the old one is still reachable.
-    state.resumeOffer
-      ? '<div class="sep" style="display:flex;flex-direction:column;gap:7px">' +
-        '<span class="hint">you already have a delegation on this wallet &mdash; mandate #' +
-        String(state.resumeOffer) + ", still on chain.</span>" +
-        '<button id="d-resume" class="btn ghost">open mandate #' + String(state.resumeOffer) + " &rarr;</button>" +
-        "</div>"
-      : "",
+    // A STABLE, always-present slot. The offer arrives from a background chain
+    // scan seconds after connect, and filling it via set() re-rendered the whole
+    // screen underneath the user — replacing the primary button at the moment
+    // they were pressing it. Same reason the sliders bypass set().
+    '<div id="d-resume-slot"></div>',
     "</div>",
   ].join("");
 }
 
+/**
+ * Fill the resume slot without touching the rest of the screen.
+ *
+ * Called both on render (so it survives a legitimate re-render) and directly
+ * by the background scan when it lands.
+ */
+export function paintResumeOffer(): void {
+  const slot = document.getElementById("d-resume-slot");
+  if (!slot) return;
+  const id = state.resumeOffer;
+  if (!id) { slot.innerHTML = ""; return; }
+  if (slot.dataset.for === String(id)) return; // already showing this one
+  slot.dataset.for = String(id);
+  slot.className = "sep";
+  slot.setAttribute("style", "display:flex;flex-direction:column;gap:7px");
+  slot.innerHTML =
+    '<span class="hint">you already have a delegation on this wallet &mdash; mandate #' +
+    String(id) + ", still on chain.</span>" +
+    '<button id="d-resume" class="btn ghost">open mandate #' + String(id) + " &rarr;</button>";
+  slot.querySelector("#d-resume")?.addEventListener("click", () => { void openResume(); });
+}
+
 export function bindSetup(): void {
-  document.getElementById("d-resume")?.addEventListener("click", () => { void openResume(); });
+  paintResumeOffer();
   document.getElementById("d-addnet")?.addEventListener("click", async () => {
     try {
       await addNetwork();
