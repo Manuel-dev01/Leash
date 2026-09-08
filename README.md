@@ -20,8 +20,8 @@ steal.
 
 | | Address |
 |---|---|
-| `MandateRegistry` | [`0x7ca9dA7Be8C8F8Ca5E1c9821061cD4fc23418864`](https://shannon-explorer.somnia.network/address/0x7ca9dA7Be8C8F8Ca5E1c9821061cD4fc23418864) |
-| `DeadhandHandler` | [`0xBffC022eC263C43B80bd040ded7e0A4a43101a97`](https://shannon-explorer.somnia.network/address/0xBffC022eC263C43B80bd040ded7e0A4a43101a97) |
+| `MandateRegistry` | [`0xA16e6647708E03D0692Aef98e485e7eB1139B080`](https://shannon-explorer.somnia.network/address/0xA16e6647708E03D0692Aef98e485e7eB1139B080) |
+| `DeadhandHandler` | [`0x30CA328D051BcB3341d97C24988d872707a26D94`](https://shannon-explorer.somnia.network/address/0x30CA328D051BcB3341d97C24988d872707a26D94) |
 | Collateral (tUSDC, **6 dp**) | `0x70a86D8842FB63C4Ad2b7cdddF530eBf1BB25d8E` |
 | Binary markets module (subscription emitter) | `0x3ecC694Cef705358864a646142ac17A90E29e388` |
 

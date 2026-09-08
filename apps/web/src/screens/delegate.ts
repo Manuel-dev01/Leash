@@ -33,7 +33,7 @@ const KIND = { up: 0, down: 2 } as const;
 function refusal(name: string): string {
   if (name === "ExceedsCumulative") return "refused — this would spend past the total budget.";
   if (name === "StakeExceedsPerTrade") return "refused — bigger than the per-order cap.";
-  if (name === "MarketNotAllowed") return "refused — this market is not on the mandate.";
+  if (name === "MarketNotAllowed") return "refused — this market is not on the mandate. the delegator can add it.";
   if (name === "Revoked") return "the delegator ended this delegation.";
   if (name === "Expired") return "this delegation has expired.";
   if (name === "NotDelegate") return "this mandate is not for your wallet.";
@@ -110,17 +110,17 @@ function marketPicker(): string {
   /**
    * The case that cost a real testing session.
    *
-   * Event Contract markets resolve in 2-12 MINUTES, and a mandate's allowed
-   * list is written once at creation and can never be added to. So a mandate
-   * whose expiry says "7 days" stops having anything to trade within minutes of
-   * being made, and every order after that is refused MarketNotAllowed - which
-   * reads as a broken app rather than an expired opportunity.
+   * Event Contract markets resolve in 2-12 MINUTES, so a mandate created even
+   * an hour ago names markets that have all closed, and every order is refused
+   * MarketNotAllowed - which reads as a broken app rather than an expired
+   * opportunity. The delegator can re-point it (registry.setMarkets), so this
+   * says who can fix it rather than just reporting the wall.
    */
   const stranded = known && openToUs === 0
     ? '<div class="sep" style="display:flex;flex-direction:column;gap:6px">' +
       '<span role="status" style="font-size:12.5px;color:var(--accent);overflow-wrap:anywhere">' +
       "none of the markets open right now are on this mandate.</span>" +
-      '<span class="hint">these markets resolve every few minutes, and a mandate can only ever name the ones that existed when it was created. the delegator needs to set up a new delegation for the markets trading now.</span>' +
+      '<span class="hint">these markets resolve every few minutes, so the ones this mandate names have already closed. the delegator can point it at the markets trading now from their own screen — the spending limits do not change.</span>' +
       "</div>"
     : "";
 

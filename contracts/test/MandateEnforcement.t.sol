@@ -502,4 +502,221 @@ contract MandateEnforcementTest is Test {
         assertEq(usdc.balanceOf(delegator) - aBefore, 500_000, "A must NOT receive B's escrow");
         assertEq(reg.refundClaim(idB), 500_000, "B's claim survives untouched");
     }
+
+    // ---- the sweep defect, and the floor that closes the class -------------
+
+    /**
+     * FAILS WITHOUT THE FIX. That is the whole point of it.
+     *
+     * `_sweep` kept only `totalOwed`, so delegator A's BOOKED refund - money
+     * already arrived but not yet claimed - was swept out to delegator B by B's
+     * next order. Misattribution, not stranding: it left to the wrong party
+     * while A's claim stayed on the books, unbacked, forever.
+     *
+     * The suite had 41 green tests while this was live, because `holdsNoFunds()`
+     * is a CEILING (balance <= owed + claims) and a misallocation only lowers
+     * the balance - the check passed more easily the worse the bug got.
+     */
+    function test_sweepDoesNotPayOneDelegatorsRefundToAnother() public {
+        address other = address(0xA11CE);
+        uint256 idA = _mandate(1_000_000, 10_000_000);
+        uint256 idB = _mandateFor(other, 1_000_000, 10_000_000);
+
+        // A trades; the market resolves; the refund is BOOKED. The pool has not
+        // returned the money yet - the asynchronous case sweepRefunds exists for.
+        pool.setConsumeBps(0);
+        _place(idA, 500_000, 1_000_000);
+        pool.market().setResolved(true);
+        reg.settleFinalizedMarket(MARKET, 10);
+        uint256 claimA = reg.refundClaim(idA);
+        assertGt(claimA, 0, "A must have a booked claim to misattribute");
+
+        // Now the pool's money arrives.
+        usdc.mint(address(reg), claimA);
+        assertTrue(reg.claimsAreBacked(), "backed the moment it lands");
+
+        // B places an order. B's own residual is zero, so anything B walks away
+        // with beyond its own cost came out of A's claim.
+        pool.market().setResolved(false);
+        pool.setConsumeBps(10_000);
+        uint256 bBefore = usdc.balanceOf(other);
+        vm.prank(other);
+        reg.placeForDelegator(idB, MARKET, address(pool), 0, 500_000, 1_000_000, uint64(block.timestamp + 60));
+        uint256 bNet = bBefore - usdc.balanceOf(other);
+
+        assertEq(bNet, 500_000, "B paid its own cost and received nothing extra");
+        assertEq(reg.refundClaim(idA), claimA, "A's claim untouched by B's order");
+        assertTrue(reg.claimsAreBacked(), "the floor holds after a third party trades");
+
+        // And A can still be paid, in full.
+        uint256 aBefore = usdc.balanceOf(delegator);
+        reg.sweepRefunds(idA);
+        assertEq(usdc.balanceOf(delegator) - aBefore, claimA, "A is paid in full");
+    }
+
+    /// The floor belongs on every path, not only the one that broke.
+    function test_claimsAreBacked_afterEveryOrderPath() public {
+        uint256 id = _mandate(1_000_000, 10_000_000);
+        assertTrue(reg.claimsAreBacked(), "clean at start");
+
+        pool.setConsumeBps(10_000);
+        _place(id, 500_000, 1_000_000);
+        assertTrue(reg.claimsAreBacked(), "after a fully consumed order");
+
+        pool.setConsumeBps(4_000);
+        _place(id, 500_000, 1_000_000);
+        assertTrue(reg.claimsAreBacked(), "after a partially consumed order");
+
+        // Settlement books claims against proceeds the POOL still holds, so the
+        // floor is legitimately open here. Asserting otherwise would be
+        // asserting something the contract never promised.
+        pool.market().setResolved(true);
+        reg.settleFinalizedMarket(MARKET, 10);
+        uint256 gap = reg.unbackedClaims();
+        assertTrue(reg.holdsNoFunds(), "ceiling still holds through settlement");
+
+        // Once the proceeds land, the floor closes and stays closed.
+        usdc.mint(address(reg), gap);
+        assertTrue(reg.claimsAreBacked(), "floor closes when proceeds arrive");
+        assertEq(reg.unbackedClaims(), 0, "and nothing is left uncovered");
+    }
+
+    /**
+     * The invariant that actually holds at all times: someone else trading
+     * never widens the gap between what is booked and what is held.
+     *
+     * This is the misattribution bug stated as a property rather than as a
+     * scenario, so it closes the class and not just the instance.
+     */
+    function test_anotherPartysOrderNeverWidensTheBackingGap() public {
+        address other = address(0xA11CE);
+        uint256 idA = _mandate(1_000_000, 10_000_000);
+        uint256 idB = _mandateFor(other, 1_000_000, 10_000_000);
+
+        pool.setConsumeBps(0);
+        _place(idA, 500_000, 1_000_000);
+        pool.market().setResolved(true);
+        reg.settleFinalizedMarket(MARKET, 10);
+        usdc.mint(address(reg), reg.refundClaim(idA)); // proceeds arrive
+        uint256 gapBefore = reg.unbackedClaims();
+
+        pool.market().setResolved(false);
+        pool.setConsumeBps(10_000);
+        vm.prank(other);
+        reg.placeForDelegator(idB, MARKET, address(pool), 0, 500_000, 1_000_000, uint64(block.timestamp + 60));
+
+        assertLe(reg.unbackedClaims(), gapBefore, "a third party's order widened the backing gap");
+    }
+
+    // ---- setMarkets: new authority, so test what it must NOT permit --------
+
+    function _ids(bytes32 a) internal pure returns (bytes32[] memory out) {
+        out = new bytes32[](1);
+        out[0] = a;
+    }
+
+    /**
+     * The reason this exists: markets resolve in minutes, the allowed set was
+     * fixed at creation, so a mandate went dead long before its expiry.
+     */
+    function test_delegatorCanPointMandateAtANewMarket() public {
+        uint256 id = _mandate(1_000_000, 10_000_000);
+        assertFalse(reg.allowedMarket(id, OTHER_MARKET), "not allowed to begin with");
+
+        vm.prank(delegate);
+        vm.expectRevert(MandateRegistry.MarketNotAllowed.selector);
+        reg.placeForDelegator(id, OTHER_MARKET, address(pool), 0, 500_000, 1_000_000, uint64(block.timestamp + 60));
+
+        vm.prank(delegator);
+        reg.setMarkets(id, _ids(OTHER_MARKET), true);
+        assertTrue(reg.allowedMarket(id, OTHER_MARKET), "now allowed");
+
+        vm.prank(delegate);
+        reg.placeForDelegator(id, OTHER_MARKET, address(pool), 0, 500_000, 1_000_000, uint64(block.timestamp + 60));
+    }
+
+    /// Symmetric: the delegator can take a market away again.
+    function test_delegatorCanNarrowTheAllowedSet() public {
+        uint256 id = _mandate(1_000_000, 10_000_000);
+        vm.prank(delegator);
+        reg.setMarkets(id, _ids(MARKET), false);
+
+        // Inlined rather than via _place: that helper does its own vm.prank,
+        // which nests below expectRevert and never matches.
+        vm.prank(delegate);
+        vm.expectRevert(MandateRegistry.MarketNotAllowed.selector);
+        reg.placeForDelegator(id, MARKET, address(pool), 0, 500_000, 1_000_000, uint64(block.timestamp + 60));
+    }
+
+    function test_delegateCannotWidenTheirOwnMandate() public {
+        uint256 id = _mandate(1_000_000, 10_000_000);
+        vm.prank(delegate);
+        vm.expectRevert(MandateRegistry.NotDelegator.selector);
+        reg.setMarkets(id, _ids(OTHER_MARKET), true);
+    }
+
+    function test_strangerCannotWidenSomeoneElsesMandate() public {
+        uint256 id = _mandate(1_000_000, 10_000_000);
+        vm.prank(stranger);
+        vm.expectRevert(MandateRegistry.NotDelegator.selector);
+        reg.setMarkets(id, _ids(OTHER_MARKET), true);
+    }
+
+    /// A revoked mandate is over. It must not be revivable by widening it.
+    function test_cannotWidenARevokedMandate() public {
+        uint256 id = _mandate(1_000_000, 10_000_000);
+        vm.prank(delegator);
+        reg.revoke(id);
+        vm.prank(delegator);
+        vm.expectRevert(MandateRegistry.Revoked.selector);
+        reg.setMarkets(id, _ids(OTHER_MARKET), true);
+    }
+
+    function test_cannotWidenAnExpiredMandate() public {
+        uint256 id = _mandate(1_000_000, 10_000_000);
+        vm.warp(uint256(expiry) + 1);
+        vm.prank(delegator);
+        vm.expectRevert(MandateRegistry.Expired.selector);
+        reg.setMarkets(id, _ids(OTHER_MARKET), true);
+    }
+
+    /**
+     * The MONEY limits stay immutable. setMarkets changes WHICH markets, never
+     * how much - otherwise it would be a hole in the guarantee the delegate is
+     * relying on, dressed as a convenience.
+     */
+    function test_setMarketsCannotMoveAnyMoneyLimit() public {
+        uint256 id = _mandate(1_000_000, 10_000_000);
+        (, , uint128 perTradeBefore, uint128 capBefore, uint128 usedBefore, uint64 expBefore, , ) = reg.mandates(id);
+
+        vm.prank(delegator);
+        reg.setMarkets(id, _ids(OTHER_MARKET), true);
+
+        (, , uint128 perTradeAfter, uint128 capAfter, uint128 usedAfter, uint64 expAfter, , ) = reg.mandates(id);
+        assertEq(perTradeAfter, perTradeBefore, "per-trade cap moved");
+        assertEq(capAfter, capBefore, "cumulative cap moved");
+        assertEq(usedAfter, usedBefore, "used exposure moved");
+        assertEq(expAfter, expBefore, "expiry moved");
+    }
+
+    /// Widening does not hand the delegate more money to spend.
+    function test_wideningDoesNotRaiseTheSpendingCap() public {
+        uint256 id = _mandate(1_000_000, 2_000_000);
+        pool.setConsumeBps(10_000);
+        _place(id, 1_000_000, 1_000_000);
+        _place(id, 1_000_000, 1_000_000);
+
+        vm.prank(delegator);
+        reg.setMarkets(id, _ids(OTHER_MARKET), true);
+
+        vm.prank(delegate);
+        vm.expectRevert(abi.encodeWithSelector(MandateRegistry.ExceedsCumulative.selector, 3_000_000, 2_000_000));
+        reg.placeForDelegator(id, OTHER_MARKET, address(pool), 0, 1_000_000, 1_000_000, uint64(block.timestamp + 60));
+    }
+
+    function test_setMarketsOnAMandateThatDoesNotExist_reverts() public {
+        vm.prank(delegator);
+        vm.expectRevert(MandateRegistry.NoMandate.selector);
+        reg.setMarkets(9999, _ids(MARKET), true);
+    }
 }

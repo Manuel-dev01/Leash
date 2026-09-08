@@ -484,6 +484,35 @@ export function freshnessLine(): string {
 }
 
 
+/**
+ * How many of the markets trading RIGHT NOW this mandate permits, and the one
+ * action that fixes it when the answer is none.
+ *
+ * The count is read from the contract (`state.allowed`, filled by
+ * `allowedMarket` reads), never from the draft set the delegator picked during
+ * setup — those are different things and conflating them would show a delegator
+ * a permission their delegate does not have.
+ */
+function marketsRow(): string {
+  const total = state.markets.length;
+  if (!state.allowedKnown || total === 0) {
+    return '<div class="rowline"><span style="font-size:12px;color:var(--dimmer)">tradable now</span>' +
+      '<span style="font-size:12.5px;color:var(--dimmer)">not checked yet</span></div>';
+  }
+  const open = state.markets.filter((m) => state.allowed.has(m.marketId)).length;
+  const none = open === 0;
+  return [
+    '<div class="rowline"><span style="font-size:12px;color:var(--dimmer)">tradable now</span>',
+    '<span style="font-size:12.5px;color:' + (none ? "var(--accent)" : "var(--ink)") + '">' +
+      open + " of " + total + " live markets</span></div>",
+    none
+      ? '<span class="hint">markets resolve every few minutes, so the ones you picked have closed. this does not change any spending limit.</span>'
+      : "",
+    '<button id="m-markets" class="btn ghost"' + (state.busy ? " disabled" : "") + ">" +
+      (state.busy ? "waiting…" : none ? "allow the markets trading now" : "refresh the allowed markets") + "</button>",
+  ].join("");
+}
+
 export function manageScreen(d: MonitorData | null): string {
   if (state.mandateParamError) {
     return '<div class="screen"><p role="alert" class="body" style="margin:0;color:var(--accent)">' +
@@ -537,6 +566,10 @@ export function manageScreen(d: MonitorData | null): string {
     freshnessLine(),
     err(),
     '<div class="sep" style="display:flex;flex-direction:column;gap:8px">',
+    // Markets resolve in minutes; a mandate names the ones that existed when it
+    // was made. Without this the delegation is alive and untradable, which is
+    // how it read to the person testing it: every order refused, no way out.
+    marketsRow(),
     '<button id="m-link" class="btn ghost">show the link again</button>',
     // With the app now reopening your delegation automatically, this is the
     // only way back into setup — without it a delegator with one mandate can
@@ -553,6 +586,36 @@ export function manageScreen(d: MonitorData | null): string {
 }
 
 export function bindManage(): void {
+  document.getElementById("m-markets")?.addEventListener("click", async () => {
+    if (!state.mandateId || !state.account) { set({ error: "connect the delegator wallet first" }); return; }
+    const ids = state.markets.map((m) => m.marketId as Hex);
+    if (ids.length === 0) { set({ error: "no live markets to allow right now" }); return; }
+    set({ busy: true, error: "", notice: "" });
+    const btn = document.getElementById("m-markets");
+    try {
+      // Simulate first. setMarkets refuses a revoked or expired mandate, and
+      // finding that out from a mined transaction is finding it out too late.
+      await pub.simulateContract({
+        account: state.account, address: REGISTRY as Address, abi: registryAbi,
+        functionName: "setMarkets", args: [state.mandateId, ids, true],
+      });
+      if (btn) btn.textContent = "sign in your wallet…";
+      const hash = await wallet(state.account).writeContract({
+        address: REGISTRY as Address, abi: registryAbi,
+        functionName: "setMarkets", args: [state.mandateId, ids, true],
+      });
+      if (btn) btn.textContent = "waiting for confirmation…";
+      const r = await pub.waitForTransactionReceipt({ hash });
+      set({
+        busy: false,
+        notice: r.status === "success"
+          ? `${ids.length} live markets are now on this delegation. limits unchanged.`
+          : "that transaction reverted — nothing changed.",
+      });
+    } catch (e) {
+      set({ busy: false, error: errName(e) });
+    }
+  });
   document.getElementById("m-new")?.addEventListener("click", () => {
     // The URL and the stored pointer both name the old mandate. Leave either in
     // place and the next render (or the next reload) reopens it.

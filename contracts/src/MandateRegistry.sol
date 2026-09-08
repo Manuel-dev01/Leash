@@ -156,6 +156,8 @@ contract MandateRegistry {
         uint128 maxStakePerTrade, uint128 maxCumulativeExposure, uint64 expiry
     );
     event MandateRevoked(uint256 indexed mandateId, address indexed by, string reason);
+    /// The delegator re-pointed a mandate at a different set of markets.
+    event MarketsSet(uint256 indexed mandateId, uint256 count, bool allowed);
     event OrderPlacedFor(
         uint256 indexed mandateId, bytes32 indexed marketId, address indexed pool,
         uint128 orderId, uint128 reserved, uint128 usedExposure
@@ -236,6 +238,38 @@ contract MandateRegistry {
             allowedMarket[mandateId][marketIds[i]] = true;
         }
         emit MandateCreated(mandateId, msg.sender, delegate, maxStakePerTrade, maxCumulativeExposure, expiry);
+    }
+
+    /**
+     * Point an existing mandate at a different set of markets.
+     *
+     * Event Contract markets resolve in 2-12 MINUTES. The allowed set was
+     * written once in `createMandate` and could never be changed, so a mandate
+     * whose expiry read "7 days" stopped having anything to trade within
+     * minutes of being created, and every order after that reverted
+     * `MarketNotAllowed`. The delegation was alive and useless.
+     *
+     * ONLY the delegator, and only their own mandate. This is not an admin
+     * power and it is not a way around anything: widening is a thing the
+     * delegator could already do by revoking and creating a new mandate, and
+     * narrowing is strictly a tightening. `maxStakePerTrade`,
+     * `maxCumulativeExposure` and `expiry` remain immutable for the life of the
+     * mandate - those are the limits the delegate relies on, and the money
+     * limits never move.
+     *
+     * Symmetric on purpose. An allow-list that can only ever grow is a weaker
+     * promise than one the delegator can also shrink.
+     */
+    function setMarkets(uint256 mandateId, bytes32[] calldata marketIds, bool allowed) external {
+        Mandate storage m = mandates[mandateId];
+        if (!m.exists) revert NoMandate();
+        if (msg.sender != m.delegator) revert NotDelegator();
+        if (m.revoked) revert Revoked();
+        if (block.timestamp >= m.expiry) revert Expired();
+        for (uint256 i = 0; i < marketIds.length; ++i) {
+            allowedMarket[mandateId][marketIds[i]] = allowed;
+        }
+        emit MarketsSet(mandateId, marketIds.length, allowed);
     }
 
     /// Immediate and unconditional. The delegator never needs anyone's cooperation.
@@ -538,9 +572,22 @@ contract MandateRegistry {
      * the same reason we read order ids from receipts. Anything left here after
      * this call is a bug, and the test suite says so.
      */
+    /**
+     * Return whatever is not spoken for to `to`.
+     *
+     * `keep` MUST include `totalRefundClaim`. Keeping only `totalOwed` swept
+     * delegator A's booked refund out to delegator B on B's next order:
+     * misattribution, not stranding - the money left to the wrong party while
+     * A's claim stayed booked and unbacked forever.
+     *
+     * `holdsNoFunds()` could not see it. It asserts balance <= owed + claims,
+     * so a misallocation LOWERS the balance and the check passes MORE easily
+     * the worse the bug gets. That is why `claimsAreBacked()` exists below: a
+     * ceiling without a floor only ever catches half the ways this can break.
+     */
     function _sweep(address to) private {
         uint256 bal = collateral.balanceOf(address(this));
-        uint256 keep = totalOwed;
+        uint256 keep = totalOwed + totalRefundClaim;
         if (bal <= keep) return;
         _returnTo(to, bal - keep);
     }
@@ -596,6 +643,40 @@ contract MandateRegistry {
      */
     function holdsNoFunds() external view returns (bool) {
         return collateral.balanceOf(address(this)) <= totalOwed + totalRefundClaim;
+    }
+
+    /**
+     * The FLOOR: every claim this contract has booked is covered by what it
+     * holds.
+     *
+     * `holdsNoFunds()` is the ceiling - nothing here is unattributed. Alone it
+     * is satisfied by a contract holding too LITTLE, which is exactly the shape
+     * of the `_sweep` defect: a misallocation lowers the balance, so the
+     * ceiling passed MORE easily the worse the bug got.
+     *
+     * ⚠️ NOT true at every instant, and saying otherwise would be a claim this
+     * contract cannot keep. Settlement books a claim while the POOL still holds
+     * the proceeds, so between `settleOne` and the money arriving the balance
+     * is legitimately below the booked total. `unbackedClaims()` measures that
+     * gap. What IS invariant is that a sweep never widens it - see
+     * `test_sweepDoesNotPayOneDelegatorsRefundToAnother`.
+     */
+    function claimsAreBacked() external view returns (bool) {
+        return collateral.balanceOf(address(this)) >= totalOwed + totalRefundClaim;
+    }
+
+    /**
+     * How far the booked total exceeds what is held, in raw collateral units.
+     *
+     * Zero in the settled state. Non-zero only while a settlement's proceeds
+     * are in flight from the pool. It must never RISE because someone else
+     * traded - that rise is the misattribution bug, and it is what the floor
+     * exists to detect.
+     */
+    function unbackedClaims() external view returns (uint256) {
+        uint256 spokenFor = totalOwed + totalRefundClaim;
+        uint256 held = collateral.balanceOf(address(this));
+        return held >= spokenFor ? 0 : spokenFor - held;
     }
 
     /// Collateral here that belongs to nobody in particular. Must always be 0.

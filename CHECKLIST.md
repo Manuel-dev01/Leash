@@ -6,8 +6,8 @@ either way, say so.
 
 - **App:** https://leash-rho.vercel.app
 - **Chain:** Somnia Shannon, id `50312` · **Collateral:** tUSDC, **6 decimals**
-- **Registry:** `0x7ca9dA7Be8C8F8Ca5E1c9821061cD4fc23418864`
-- **Handler:** `0xBffC022eC263C43B80bd040ded7e0A4a43101a97`
+- **Registry:** `0xA16e6647708E03D0692Aef98e485e7eB1139B080`
+- **Handler:** `0x30CA328D051BcB3341d97C24988d872707a26D94`
 
 **The flow is 4 setup steps + one manage surface. The delegate has one screen.**
 Anything describing `01 connect` / `02 choose_delegate` / `06 monitor` /

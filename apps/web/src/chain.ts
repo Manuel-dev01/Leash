@@ -25,9 +25,9 @@ const ENV = (import.meta as unknown as { env?: Record<string, string> }).env ?? 
 export const REGISTRY: string =
   new URLSearchParams(globalThis.location?.search ?? "").get("r") ??
   ENV.VITE_REGISTRY ??
-  "0x7ca9dA7Be8C8F8Ca5E1c9821061cD4fc23418864";
+  "0xA16e6647708E03D0692Aef98e485e7eB1139B080";
 export const HANDLER: string =
-  ENV.VITE_HANDLER ?? "0xBffC022eC263C43B80bd040ded7e0A4a43101a97";
+  ENV.VITE_HANDLER ?? "0x30CA328D051BcB3341d97C24988d872707a26D94";
 
 export const chain = {
   id: CHAIN_ID,
@@ -41,6 +41,9 @@ export const registryAbi = parseAbi([
   "function createMandate(address delegate, uint128 maxStakePerTrade, uint128 maxCumulativeExposure, uint64 expiry, bytes32[] marketIds) returns (uint256)",
   "function placeForDelegator(uint256 mandateId, bytes32 marketId, address pool, uint8 kind, uint256 price, uint256 quantity, uint64 expireTimestampNs) returns (uint128)",
   "function revoke(uint256 mandateId)",
+  "function setMarkets(uint256 mandateId, bytes32[] marketIds, bool allowed)",
+  "function claimsAreBacked() view returns (bool)",
+  "function unbackedClaims() view returns (uint256)",
   "function mandates(uint256) view returns (address delegator, address delegate, uint128 maxStakePerTrade, uint128 maxCumulativeExposure, uint128 usedExposure, uint64 expiry, bool revoked, bool exists)",
   "function remainingExposure(uint256) view returns (uint256)",
   "function isActive(uint256) view returns (bool)",
@@ -49,6 +52,7 @@ export const registryAbi = parseAbi([
   "function holdsNoFunds() view returns (bool)",
   "function unattributed() view returns (uint256)",
   "function refundClaim(uint256) view returns (uint256)",
+  "error NoMandate()",
   "error NotDelegator()",
   "error NotDelegate()",
   "error Revoked()",

@@ -554,7 +554,7 @@ test.describe("links actually work", () => {
     // The registry address must be inside the anchor, not beside it.
     const ex = links.find((l) => l.href.includes("shannon-explorer"));
     expect(ex, "no explorer link found").toBeTruthy();
-    expect(ex!.href).toContain("0x7ca9dA7Be8C8F8Ca5E1c9821061cD4fc23418864");
+    expect(ex!.href).toContain("0xA16e6647708E03D0692Aef98e485e7eB1139B080");
     expect(ex!.text, `explorer link reads "${ex!.text}" — the address should be the clickable text`)
       .toMatch(/0x7ca9/i);
   });
