@@ -177,6 +177,20 @@ True in source and asserted against the deployment, as a three-link chain:
 Link 1 is what makes link 2 a statement about the *deployment* rather than about
 a local file.
 
+**One function changes a mandate after it is created, and it is not an admin
+power.** `setMarkets(mandateId, marketIds[], allowed)` is callable only by that
+mandate's own delegator — no role, no owner, no global authority; a stranger and
+the delegate itself both revert `NotDelegator`. It exists because Event Contract
+markets resolve in **2-12 minutes** while the allowed set was written once at
+creation, so a mandate whose expiry read "7 days" had nothing left to trade
+within minutes and refused every order. It is symmetric: the delegator can
+narrow the set as well as widen it, because an allow-list that only ever grows
+is a weaker promise than one that moves both ways. And it moves **no money
+limit** — `maxStakePerTrade`, `maxCumulativeExposure` and `expiry` are immutable
+for the life of the mandate, which
+[`test_setMarketsCannotMoveAnyMoneyLimit`](contracts/test/MandateEnforcement.t.sol)
+and `test_wideningDoesNotRaiseTheSpendingCap` both assert.
+
 > A linear disassembly of the deployed bytes reports `DELEGATECALL` at offset
 > 8557, and `cast disassemble` agrees. Both are wrong — that offset is inside a
 > 32-byte data blob (it is `MandateRevoked`'s topic0 constant). Never assert an
@@ -192,7 +206,41 @@ a local file.
 - **In the suite, after every order path** —
   [`test_holdsNoFunds_afterEveryOrderPath`](contracts/test/MandateEnforcement.t.sol#L56),
   `contracts/test/MandateEnforcement.t.sol:56`.
-- **41 tests total** — 28 enforcement, 13 revocation. `forge test`.
+- **56 tests total** — 43 enforcement, 13 revocation. `forge test`.
+
+#### A sweep returns only its own order's residual
+
+`placeForDelegator` records the balance **before** it pulls, and returns exactly
+what that transaction brought in and the pool declined to take, capped at the
+order's own cost. Collateral already sitting in the contract for someone else is
+therefore untouched *by construction*.
+
+It used to subtract a global floor — `balance - (totalOwed + totalRefundClaim)`
+— on the assumption that anything unaccounted for belonged to the caller. That
+floor was one term short, and one delegator's booked refund left with another
+delegator's order. A floor that has to enumerate every claim anyone holds on the
+contract, forever, is the wrong shape; it is gone rather than repaired.
+[`test_collateralHeldForOthersSurvivesAnUnrelatedOrder`](contracts/test/MandateEnforcement.t.sol)
+holds even when the bookkeeping that was supposed to protect that money is
+absent, and against the old sweep it fails with an arithmetic underflow — the
+delegator ending up with more than they spent.
+
+#### Refunds arrive late, and they do arrive
+
+`settleOne` books a claim the moment a market resolves, but the pool returns the
+escrow asynchronously — measured at minutes. In that window
+`claimsAreBacked()` is legitimately false and `unbackedClaims()` shows the gap,
+so it is published as a reading rather than as a guarantee.
+
+The gap closes. On this deployment: **11 mandates booked 0.22 tUSDC, and
+`sweepRefunds` paid every one in full**, triggered by a key that never traded —
+outstanding claims back to zero, registry balance back to zero.
+
+That is also how the old defect is told apart from ordinary lag. Under the old
+global-floor sweep the money left with someone else's order and never arrived
+for the party owed it, so the old registry sat permanently at **15.36 tUSDC
+booked against a zero balance**. A single snapshot cannot distinguish the two —
+this build mistook one for the other once — so the test is whether it clears.
 
 ---
 

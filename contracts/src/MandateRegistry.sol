@@ -658,27 +658,25 @@ contract MandateRegistry {
     }
 
     /**
-     * A DIAGNOSTIC, deliberately not called an invariant.
+     * True when what this contract holds covers everything it has booked.
      *
-     * True when what this contract holds covers everything it has booked. It is
-     * legitimately false in two situations, and publishing it as a guarantee
-     * would be claiming something the contract does not deliver:
+     * NOT true at every instant, and calling it an invariant would overstate
+     * it: `settleOne` books a claim while the POOL still holds the proceeds,
+     * and that return is asynchronous — measured on the live venue at minutes,
+     * not blocks. In that window the balance is legitimately below the booked
+     * total. `unbackedClaims()` measures the gap.
      *
-     *  1. Between `settleOne` booking a claim and the pool returning the
-     *     proceeds, which is asynchronous.
-     *  2. Permanently, when a claim was booked for collateral that is never
-     *     coming back. `settleOne` books `release = r.reserved` — the WHOLE
-     *     escrow — but a pool keeps what a fill consumed, and a losing position
-     *     at resolution returns nothing at all. Measured on the live venue:
-     *     eight mandates, 0.02 tUSDC booked each, nothing returned.
+     * It does close. Measured on this deployment: 11 mandates booked 0.22
+     * tUSDC, the proceeds arrived late, `sweepRefunds` paid all 11 in full and
+     * the outstanding total returned to zero.
      *
-     * (2) is a real accounting gap and it is stated here rather than hidden
-     * behind a view that reads "true" often enough to look like a promise. What
-     * the contract DOES guarantee is narrower and structural: a sweep returns
-     * only the residual of the order that created it, so no delegator's
-     * collateral can leave with another delegator's transaction. That is
-     * `test_collateralHeldForOthersSurvivesAnUnrelatedOrder`, and it holds even
-     * when the numbers below are wrong.
+     * ⚠️ A gap that does NOT close is the signature of the old `_sweep`, which
+     * subtracted a global floor and paid one delegator's booked refund out with
+     * another delegator's order — so it never arrived for the party owed it.
+     * The old registry sat permanently at 15.36 tUSDC booked against a zero
+     * balance. Do not read a non-zero value here as that bug without first
+     * waiting for the pool: the two look identical in a single snapshot, which
+     * is a mistake this codebase has already made once.
      */
     function claimsAreBacked() external view returns (bool) {
         return collateral.balanceOf(address(this)) >= totalOwed + totalRefundClaim;

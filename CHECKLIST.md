@@ -19,8 +19,8 @@ Anything describing `01 connect` / `02 choose_delegate` / `06 monitor` /
 
 | # | Do | Expect | If not |
 |---|---|---|---|
-| 0.1 | `npx tsx scripts/verify.ts` | `34 checks: 33 pass, 1 amber, 0 fail` | Any **FAIL** → stop |
-| 0.2 | Read the amber | `delegators-paid` — and only that | A different amber is new |
+| 0.1 | `npx tsx scripts/verify.ts` | `34 checks: 34 pass, 0 amber, 0 fail` | Any **FAIL** → stop |
+| 0.2 | Read any amber | On the current deployment there should be none | An amber naming a handler measurement means it needs re-proving |
 | 0.3 | `npm run ready` | `GO`, a market with ttl 200–900s | `WAIT` → next window ~5 min |
 | 0.4 | Open a **normal browser window**. Call it **A**. Connect the delegator wallet here | Has tUSDC + STT | |
 | 0.5 | Open a **second, separate window** — a different Chrome profile, or a different browser. Call it **B**. Connect the delegate wallet here | **≥ 0.3 STT** | Runs dry after ~10 orders |
@@ -130,6 +130,8 @@ rationale anywhere on the page.**
 | 3.4 | **`show the link again`** | Returns to the QR / link screen |
 | 3.5 | **`end this delegation`** | Present **on this screen** — ending is an action here, not a separate step |
 | 3.5b | **`set up another delegation`** | Also on this screen. Without it, resuming would trap you on your first mandate forever |
+| 3.5c | Read the **`tradable now`** line | `N of M live markets`. If it says **`0 of M`** in red, that is correct and expected for any mandate more than a few minutes old |
+| 3.5d | Click **`allow the markets trading now`** | One signature. Then the line becomes `M of M`, and the delegate can trade again. **Check the four limits above did not move** — this changes which markets, never how much |
 | 3.6 | Turn wi-fi off ~30s | Line turns red: *the chain is not answering… stale*. Figures **stay**; no zeros appear |
 | 3.7 | Wi-fi on, reload `/app?m=N` | Opens **directly on your delegation** — not back at step 1 |
 | 3.8 | Now open **plain `/app`**, with no `?m=` at all | Still opens on your delegation. The app looks your newest mandate up **on the contract** by your address, and writes `?m=N` back into the URL |
@@ -153,6 +155,7 @@ delegator view.
 | 4.5 | Pick a market | The row marks itself `trading` |
 | 4.6 | Click **UP**, then **DOWN** | The selected one shows a **✓** — not colour alone |
 | 4.7 | Drag size **above** the per-order cap, **`place order`** | `refused — bigger than the per-order cap.` |
+| 4.7b | Look at the market rows | Any market the mandate does not name reads **`not on mandate`**, is greyed, and **cannot be selected**. You should never be able to pick one and then be refused |
 | 4.8 | Drag the size back down | The refusal **clears as you drag** |
 | 4.9 | Place a valid order | Tx hash + explorer link appears; status `placed` |
 | 4.10 | Watch the envelope | Remaining **drops** within ~8s |
@@ -210,8 +213,11 @@ delegator view.
 - **An order rests instead of filling.** Expected: 4 of 17.
 - **`no market is open right now`.** The venue runs six at a time; 3 of 20
   rehearsals hit a gap. It is the venue, not us.
-- **The `delegators-paid` amber.** Phantom claims from the `_sweep` defect —
-  diagnosed, fix scheduled, and **`collect` cannot clear them**.
+- **Refund claims outstanding while the registry holds 0.** `settleOne` books
+  the whole escrow as refundable, but a pool keeps what a fill consumed and a
+  losing position returns nothing. Known, documented limitation — `collect`
+  cannot clear these, and it no longer strands anything: the sweep returns only
+  its own order's residual, so nobody else's money is involved.
 - **`held by leash` non-zero mid-order.** Correct while an order is open; it
   sweeps back in the same transaction.
 - **`not checked yet`** on the allowed line, before the first on-chain check.

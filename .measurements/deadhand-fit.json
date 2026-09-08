@@ -29,5 +29,25 @@
     "subGasLimit": "10000000",
     "firstEver": false,
     "note": "40 reservations were open (20 stale from a crashed run), so the cap of 32 clipped the batch: processed=32, drained=false. The gas is a valid measurement of settling 32."
+  },
+  {
+    "n": 3,
+    "gas": 1550679,
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000016a87",
+    "tx": "0x9dd2180a27c5f7dc4f1ef6dba445e5c745818e69b414c341276d8d696293d3bc",
+    "codeHash": "0x6ec80e8ac2d2676b7c3a4512561336b2ae3e464823f08aeb12af7dde1b504444",
+    "at": "2026-09-08T05:15:12.905Z",
+    "subGasLimit": "8000000",
+    "firstEver": true
+  },
+  {
+    "n": 12,
+    "gas": 3302336,
+    "marketId": "0x0000000000000000000000000000000000000000000000000000000000016a95",
+    "tx": "0xcba1a4d73754598cdda04a7090673b69f227a4a1c5a296189f6c58ef0433aa0e",
+    "codeHash": "0x6ec80e8ac2d2676b7c3a4512561336b2ae3e464823f08aeb12af7dde1b504444",
+    "at": "2026-09-08T05:20:06.254Z",
+    "subGasLimit": "8000000",
+    "firstEver": false
   }
 ]
