@@ -98,6 +98,27 @@ export async function restoreAccount(): Promise<Address | null> {
   }
 }
 
+/**
+ * React to the wallet changing identity underneath us.
+ *
+ * A browser profile has ONE active MetaMask account, so a second tab is not a
+ * second identity: switching to the delegate's account changes it everywhere.
+ * The app read the account once and never listened, so after a switch it went
+ * on acting as the previous account - simulating the delegate's order as the
+ * DELEGATOR, which the contract correctly refuses with NotDelegate. The user
+ * sees "this mandate is not for your wallet" while looking at a wallet that is
+ * plainly the right one.
+ *
+ * EIP-1193 requires providers to emit this. Not listening is our bug.
+ */
+type EthEvents = { on?(event: string, cb: (...args: unknown[]) => void): void };
+export function watchWallet(h: { accounts?: (a: Address[]) => void; chain?: () => void }): void {
+  const e = eth() as (ReturnType<typeof eth> & EthEvents) | null;
+  if (!e || typeof e.on !== "function") return;
+  if (h.accounts) e.on("accountsChanged", (...a) => h.accounts!((a[0] as Address[]) ?? []));
+  if (h.chain) e.on("chainChanged", () => h.chain!());
+}
+
 export async function connect(): Promise<Address> {
   const e = eth();
   if (!e) throw new Error("No wallet found. Open this in a wallet browser, or install MetaMask.");

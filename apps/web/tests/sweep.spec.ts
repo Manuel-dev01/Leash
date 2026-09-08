@@ -331,6 +331,47 @@ test.describe("a delegation survives a reload", () => {
   });
 });
 
+/**
+ * The reported flow, end to end: create as the delegator, open the link in a
+ * second tab, switch MetaMask to the delegate, trade.
+ *
+ * A browser profile has ONE active MetaMask account, so the "second tab" is not
+ * a second identity - switching accounts changes it everywhere. The app read
+ * the account once and never listened for `accountsChanged`, so it kept acting
+ * as the delegator and simulated the delegate's order as the WRONG PARTY. The
+ * contract answered NotDelegate, and the screen said "this mandate is not for
+ * your wallet" while the user was looking at a wallet that was plainly right.
+ */
+test.describe("the wallet can change identity underneath the page", () => {
+  test("switching accounts is noticed, and the delegate becomes the delegate", async ({ page }) => {
+    await injectWallet(page, DELEGATOR, { preAuthorized: true });
+    await page.goto("/app.html?role=delegate&m=152");
+    await page.waitForTimeout(GRACE_MS + 3_000);
+
+    // As the delegator, on the delegate's screen: refused, and SAID so up front.
+    await expect(page.locator("#screen")).toContainText(/you are connected as/i);
+    await expect(page.locator("#t-place")).toBeDisabled();
+
+    // Switch the active account, exactly as a person does in MetaMask.
+    await page.evaluate((a) => {
+      (window as unknown as { __switchAccount: (x: string) => void }).__switchAccount(a);
+    }, DELEGATE);
+    await page.waitForTimeout(8_000);
+
+    // The page must now be the delegate, with no reload. Assert on the
+    // "trading as" line specifically: the delegate's address also appears in
+    // the mismatch banner, so a substring check on the whole screen passes
+    // while the bug is fully present. It did.
+    const screen = page.locator("#screen");
+    await expect(screen).not.toContainText(/you are connected as/i, { timeout: 20_000 });
+    await expect(screen).toContainText(new RegExp("trading as\s*" + DELEGATE.slice(0, 6), "i"));
+    // NOT a blanket "the delegator's address is absent": it correctly still
+    // appears under "your orders", because that is where the payouts go. The
+    // claim is only about WHO IS TRADING.
+    await expect(screen).not.toContainText(new RegExp("trading as\s*" + DELEGATOR.slice(0, 6), "i"));
+  });
+});
+
 test.describe("app — wallet present", () => {
   test("connect advances and the chain chip reflects the network", async ({ page }, info) => {
     const p = watch(page);

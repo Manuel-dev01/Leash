@@ -12,7 +12,7 @@ import {
 } from "./state.js";
 import {
   addNetwork, onRightChain, REGISTRY, HANDLER, pub, registryAbi, handlerAbi,
-  erc20Abi, COLLATERAL, addrUrl, fmt, errName, restoreAccount,
+  erc20Abi, COLLATERAL, addrUrl, fmt, errName, restoreAccount, watchWallet,
 } from "./chain.js";
 import { findMandate } from "./resume.js";
 import {
@@ -167,8 +167,11 @@ subscribe(() => {
  */
 let inFlight = false;
 let generation = 0;
-async function refreshMandate() {
-  if (inFlight || !state.mandateId) return;
+async function refreshMandate(force = false) {
+  // `force` is for identity changes: a poll already in flight is reading on
+  // behalf of the PREVIOUS account, so waiting for it is waiting for an answer
+  // to the wrong question.
+  if ((inFlight && !force) || !state.mandateId) return;
   inFlight = true;
   const gen = ++generation;
   // Stamped from when the read STARTED. Stamping completion let a response 40
@@ -185,15 +188,24 @@ async function refreshMandate() {
     if (fresh && state.markets.length > 0) {
       const allowed = new Set<string>();
       let checked = 0;
-      for (const m of state.markets) {
+      // In parallel. Sequentially this was one round trip per live market -
+      // around sixty - so the allowed set landed tens of seconds after the
+      // mandate figures it belongs with.
+      const results = await Promise.all(state.markets.map(async (m) => {
         try {
           const ok = (await pub.readContract({
             address: REGISTRY as Address, abi: registryAbi, functionName: "allowedMarket",
             args: [state.mandateId!, m.marketId],
           })) as boolean;
-          checked++;
-          if (ok) allowed.add(m.marketId as string);
-        } catch { /* counted by omission below */ }
+          return { id: m.marketId as string, ok };
+        } catch {
+          return null; // counted by omission
+        }
+      }));
+      for (const r of results) {
+        if (!r) continue;
+        checked++;
+        if (r.ok) allowed.add(r.id);
       }
       if (gen !== generation) return;
       state.allowed = allowed;
@@ -340,19 +352,62 @@ export async function openResume(): Promise<void> {
   await refreshMandate();
 }
 
+/**
+ * The wallet switched account (or chain) underneath the page.
+ *
+ * Re-derive everything that depended on WHO we are. The mandate id itself is
+ * kept when the URL named it - a link identifies a mandate, not a person - but
+ * anything read on that account's behalf is dropped and re-read, because
+ * showing the previous account's answers under a new address is exactly the
+ * kind of stale claim this app is not allowed to make.
+ */
+async function onWalletSwitch(next: Address | null) {
+  if ((state.account ?? null) === next) return;
+  state.account = next;
+  state.resumeOffer = null;
+  resumedFor = null;
+  state.allowed = new Set();
+  state.allowedKnown = false;
+  state.chainAt = 0;
+  monitor = null;
+  try { state.onChain = await onRightChain(); } catch { state.onChain = false; }
+  set({ error: "", notice: "", busy: false });
+  if (state.mandateId) await refreshMandate(true);
+  else if (next) await resumeMandate(state.role === "delegate");
+  set({}); // repaint even if the read found nothing new to say
+}
+
 async function boot() {
   render();
+  // FIRST, before any network await. This sat after reloadMarkets() and
+  // refreshMandate(), so a single slow contract read left the app permanently
+  // deaf to the user switching accounts - which is the whole bug it fixes.
+  // Registering a listener must never be behind a request.
+  watchWallet({
+    accounts: (accts) => { void onWalletSwitch(accts[0] ?? null); },
+    chain: () => {
+      void (async () => {
+        try { set({ onChain: await onRightChain() }); } catch { set({ onChain: false }); }
+      })();
+    },
+  });
   try { state.onChain = await onRightChain(); } catch { /* no wallet yet */ }
   // Who we already have permission to see. Silent — never prompts.
+  let restored: Address | null = null;
   try {
-    const a = await restoreAccount();
-    if (a) state.account = a;
+    restored = await restoreAccount();
+    if (restored) state.account = restored;
   } catch { /* no wallet yet */ }
   render();
   void renderContext();
   await reloadMarkets();
   if (state.mandateId) await refreshMandate();
-  else void resumeMandate(true);
+  // Only navigate for an account we already had when the page opened. boot()
+  // awaits market discovery first, so by the time this line runs the user may
+  // have pressed connect - and auto-opening their old delegation then throws
+  // them out of the setup they just started. An account acquired by connecting
+  // is handled by the subscriber below, which offers instead.
+  else if (restored) void resumeMandate(true);
   setInterval(() => { if (state.mandateId) void refreshMandate(); }, 8000);
   setInterval(() => { void renderContext(); }, 30000);
 }

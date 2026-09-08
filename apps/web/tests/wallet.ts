@@ -36,18 +36,33 @@ export async function injectWallet(
   await page.addInitScript(
     ({ account, chainIdHex, preAuthorized }) => {
       let approved = preAuthorized;
+      let current = account;
+      // Switching the ACTIVE account, exactly as a person does in MetaMask.
+      // One profile has one active account, so both tabs see this.
       const calls: { method: string; params?: unknown[] }[] = [];
+      const listeners: Record<string, ((...a: unknown[]) => void)[]> = {};
+      // Declared AFTER `calls`/`listeners`, which it closes over.
+      (window as unknown as { __switchAccount: (a: string) => void }).__switchAccount = (a: string) => {
+        current = a;
+        for (const cb of listeners.accountsChanged ?? []) cb([a]);
+      };
+      (window as unknown as { __listenerCount: () => number }).__listenerCount =
+        () => (listeners.accountsChanged ?? []).length;
       (window as unknown as { __walletCalls: typeof calls }).__walletCalls = calls;
-      (window as unknown as { ethereum: unknown }).ethereum = {
+      const provider = {
+        __stub: true,
         isMetaMask: true,
+        on(event: string, cb: (...a: unknown[]) => void) {
+            (listeners[event] ??= []).push(cb);
+        },
         async request(args: { method: string; params?: unknown[] }) {
           calls.push({ method: args.method, params: args.params });
           switch (args.method) {
             case "eth_requestAccounts":
               approved = true;
-              return [account];
+              return [current];
             case "eth_accounts":
-              return approved ? [account] : [];
+              return approved ? [current] : [];
             case "eth_chainId":
               return chainIdHex;
             case "wallet_switchEthereumChain":
@@ -63,9 +78,17 @@ export async function injectWallet(
               throw Object.assign(new Error(`unstubbed method ${args.method}`), { code: 4200 });
           }
         },
-        on() {},
-        removeListener() {},
+        // NOTE: there used to be a second, empty `on() {}` HERE. A duplicate
+        // key later in an object literal wins, so it silently overrode the real
+        // implementation above - `typeof ethereum.on === "function"` was true,
+        // the app registered happily, and no listener was ever stored.
+        removeListener(event: string) { delete listeners[event]; },
       };
+      // Define it so a real wallet extension in the SYSTEM browser cannot
+      // silently replace the stub after we install it.
+      Object.defineProperty(window, "ethereum", {
+        configurable: false, writable: false, value: provider,
+      });
     },
     { account, chainIdHex, preAuthorized },
   );
