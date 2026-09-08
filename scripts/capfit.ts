@@ -76,6 +76,16 @@ export function fit(points: Point[]): { fixed: number; marginal: number } | null
  * otherwise all of them, and the caller is told which happened.
  */
 export function choosePoints(all: Point[]): { used: Point[]; excludedFirstEver: boolean } {
+  /**
+   * A row without a positive `gas` is not a measurement.
+   *
+   * `.measurements/deadhand-fit.json` also records CEILING observations — a
+   * batch size where the invocation ran out of gas and therefore has no cost to
+   * report. One of those went in with `gas: null`, was read as zero, and the
+   * fit produced a cap of MINUS EIGHT. A file that holds two kinds of row must
+   * say which kind it is looking at rather than trusting every row to be one.
+   */
+  all = all.filter((p) => typeof p.gas === "number" && p.gas > 0);
   const warm = all.filter((p) => !p.firstEver);
   if (fit(warm)) return { used: warm, excludedFirstEver: warm.length < all.length };
   return { used: all, excludedFirstEver: false };

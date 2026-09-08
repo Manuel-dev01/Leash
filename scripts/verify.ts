@@ -513,6 +513,10 @@ async function main() {
     must(existsSync(".measurements/deadhand-fit.json"),
       "no measurement file — the cap is a number with a story attached");
     const pts = (JSON.parse(readFileSync(".measurements/deadhand-fit.json", "utf8")) as Point[])
+      // Ceiling observations (a batch that ran OUT of gas) live in this file
+      // too and carry no gas figure. They are evidence about the limit, not
+      // points on the line — counting one as zero gas produced a cap of -8.
+      .filter((p) => typeof p.gas === "number" && p.gas > 0)
       .filter((p) => p.codeHash.toLowerCase() === handlerHash.toLowerCase());
     must(pts.length > 0, `no measurement points on the deployed bytecode ${handlerHash.slice(0, 12)}…`);
     const distinct = new Set(pts.map((p) => p.n)).size;
@@ -722,18 +726,25 @@ async function main() {
     } else if (held >= claims + owed) {
       record("PASS", "delegators-paid", `outstanding but fully backed — run scripts/collect.ts to push it out (${line})`);
     } else {
-      // AMBER, not FAIL: the money is recoverable, it just needs the
-      // permissionless collect step. Failing would block a run for something
-      // that is one command away.
-      // Names the CAUSE, because most of this backlog cannot be collected:
-      // _sweep returns collateral to whichever delegator places next without
-      // decrementing refundClaim, so the claim outlives the money. sweepRefunds
-      // pays from balance and can never clear a phantom claim. An amber that
-      // recommends a command which cannot work is worse than one that explains.
+      // AMBER, not FAIL: a shortfall here is normally MONEY IN FLIGHT, not
+      // money lost. `settleOne` books a claim the moment a market resolves and
+      // the pool returns the escrow asynchronously — measured at minutes.
+      //
+      // This message used to assert the cause: "most PHANTOM, booked against
+      // collateral _sweep already returned". That was a diagnosis printed
+      // without checking anything, and it was WRONG on the current deployment —
+      // 11 mandates showing exactly this shape were paid in full by
+      // scripts/collect.ts once the proceeds landed. A status line that names a
+      // cause it did not verify is the rule-6 failure this file exists to stop.
+      //
+      // So it reports the shortfall and how to tell the two apart, and lets the
+      // reader do what neither of us can do from one snapshot: wait, then look
+      // again.
       record("AMBER", "delegators-paid",
-        `${formatUnits(claims + owed - held, 6)} tUSDC of refund claims outstanding, most PHANTOM — booked against ` +
-        `collateral _sweep already returned without decrementing them (knownLimitations: sweep-ignores-refund-claims). ` +
-        `Recent claims are collectable with scripts/collect.ts; the rest need the contract fix (${line})`);
+        `${formatUnits(claims + owed - held, 6)} tUSDC booked beyond what the registry holds. ` +
+        `Usually proceeds still in flight from the pool (minutes, not blocks) — wait, then ` +
+        `run scripts/collect.ts and re-check. If it does NOT clear, that is the signature of ` +
+        `collateral that left with another delegator's order and is worth investigating (${line})`);
     }
   }
 
@@ -829,14 +840,33 @@ async function main() {
     // (b) SWALLOWING CATCHES. A catch that neither rethrows, nor counts, nor
     // surfaces the failure returns a plausible default — which is how "0
     // tradable markets" once meant "the RPC is rate-limiting us".
+    // Every .ts under apps/web/src is in scope. It used to be a hand-listed
+    // subset, and four files written since — resume.ts, markets.ts, qr.ts,
+    // state.ts — were simply never scanned. A tripwire with a stale scope stops
+    // being a tripwire for exactly the code most likely to need one: the new code.
     const SCOPE = ["apps/web/src/app.ts", "apps/web/src/landing.ts", "apps/web/src/held.ts",
-                   "apps/web/src/chain.ts", "apps/web/src/screens/delegator.ts",
+                   "apps/web/src/chain.ts", "apps/web/src/resume.ts", "apps/web/src/markets.ts",
+                   "apps/web/src/qr.ts", "apps/web/src/state.ts",
+                   "apps/web/src/screens/delegator.ts",
                    "apps/web/src/screens/delegate.ts", "packages/leash-ec/src/discover.ts",
                    "scripts/verify.ts", "scripts/unwind.ts", "scripts/stage3-live.ts",
                    "scripts/measure-skip.ts", "scripts/demo-reset.ts", "scripts/doctor.ts"];
     // Each of these has been read and is deliberate. The comment in the source
-    // says why; this list is the record that someone decided.
-    const VETTED_CATCHES = 14;
+    // says why; this number is the record that someone decided.
+    //
+    // Raised 14 -> 20 on 8 Sep, after widening the scope to every file under
+    // apps/web/src. The six newly-visible ones were read:
+    //   resume.ts x3  — localStorage throws outright in a private window, and a
+    //                   pointer we cannot store is a slower next load, not a
+    //                   broken one.
+    //   resume.ts x2  — a failed chain read during the background scan falls
+    //                   back to showing setup. Recoverable: the delegate link
+    //                   still carries the mandate id, and nothing negative is
+    //                   cached, so the next connect retries.
+    //   markets.ts x1 — not silent at all; it sets marketsState "failed" and
+    //                   renders the reason. Counted by the scanner, surfaced in
+    //                   the product.
+    const VETTED_CATCHES = 20;
     let swallowing = 0;
     const where: string[] = [];
     for (const f of SCOPE) {

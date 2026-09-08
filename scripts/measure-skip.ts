@@ -15,7 +15,7 @@
  */
 import "dotenv/config";
 import {
-  createPublicClient, createWalletClient, http, formatEther, parseAbi,
+  createPublicClient, createWalletClient, http, formatEther, parseAbi, parseAbiItem,
   type Address, type Hex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -95,9 +95,53 @@ async function main() {
   }
   const per = Number(spent) / Number(fired);
   const GWEI = 6.8e9;
+
+  /**
+   * Capture the receipts WHILE the window is still readable.
+   *
+   * The figure above is a balance delta, which is the right way to measure it —
+   * but `verify.ts` re-checks the claim against real receipts, and this RPC
+   * serves only 1000 blocks (~100 seconds). By the time anyone goes looking the
+   * invocations have scrolled out of reach, and the evidence has to be
+   * re-measured rather than re-read. Collect it here, at the one moment it
+   * exists.
+   */
+  const evidence: string[] = [];
+  try {
+    const head = await pub.getBlockNumber();
+    const from = head > 999n ? head - 999n : 0n;
+    // viem's `event` form re-filters client-side. This RPC IGNORES the topics
+    // parameter, so a raw eth_getLogs here would return unrelated events.
+    const saw = await pub.getLogs({
+      address: HANDLER, event: parseAbiItem("event DeadhandSaw(bytes32 marketId)"),
+      fromBlock: from, toBlock: head,
+    });
+    const done = await pub.getLogs({
+      address: HANDLER,
+      event: parseAbiItem(
+        "event Deadhand(bytes32 marketId, address handler, uint256 processed, uint256 failed, bool drained, uint256 gas)",
+      ),
+      fromBlock: from, toBlock: head,
+    });
+    const settledTx = new Set(done.map((l) => l.transactionHash));
+    for (const l of saw) {
+      if (!l.transactionHash || settledTx.has(l.transactionHash)) continue;
+      if (!evidence.includes(l.transactionHash)) evidence.push(l.transactionHash);
+      if (evidence.length >= 5) break;
+    }
+  } catch {
+    // Non-fatal: the measurement stands on the balance delta either way.
+  }
+
   console.log(`\n  spent ${formatEther(spent)} STT over ${fired} pure skips`);
   console.log(`  => ${(per / 1e18).toFixed(8)} STT each  ~= ${Math.round(per / GWEI).toLocaleString()} gas`);
   console.log(`  armed cost at 1 finalization/10s: ${((per / 1e18) * 8640).toFixed(2)} STT/day`);
+  if (evidence.length > 0) {
+    console.log(`\n  receipts — put these in claims.json skip-cost provenance.evidence:`);
+    for (const h of evidence) console.log(`    "${h}",`);
+  } else {
+    console.log(`\n  NO RECEIPTS CAPTURED — the 1000-block window scrolled past first.`);
+  }
   console.log(`\n  (gas figure assumes a 6.8 gwei effective price; the STT number is`);
   console.log(`   the measured one and does not depend on that assumption)\n`);
 }

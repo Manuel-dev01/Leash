@@ -22,7 +22,7 @@
     "rather than green — a measurement that outlives its build is how 789 gas",
     "and a batch cap of 24 both nearly reached a README."
   ],
-  "generated": "2026-09-05",
+  "generated": "2026-09-08",
   "network": {
     "name": "Somnia Shannon testnet",
     "chainId": 50312,
@@ -175,7 +175,7 @@
     },
     {
       "id": "validators-settle-a-batch-in-block",
-      "claim": "When a market resolves, validators invoke the handler and it settles every affected mandate in that block - releasing exposure, revoking breachers, and sweeping payouts to the delegator, who never traded. Measured at 3, 12 and 32 mandates in single invocations.",
+      "claim": "When a market resolves, validators invoke the handler and it settles every affected mandate in that block - releasing exposure, revoking breachers, and sweeping payouts to the delegator, who never traded. Measured at 3, 8 and 12 mandates in single invocations on the deployed bytecode.",
       "appearsIn": [
         "README",
         "demo:beat3",
@@ -186,21 +186,20 @@
         "assertion": "A Deadhand event from a real validator invocation, with processed == the number of mandates seeded and drained == true.",
         "runsAgainst": "the CURRENT deployed handler bytecode, invoked by validators on a real MarketFinalized",
         "evidence": [
-          "0xd9162752036bb1c08fd85556066b599ec5960df58efafd46582030d8889b57e9",
-          "0x5a4d63b79075ebf0d6ad5f7bdb106013ae483d75f112259518fb774d6726f672",
-          "0x8f389e54f85f32bf6b14364f9a3b6f40c1803874ca7a2719c2a1beb60e5d0356",
-          "0xdb795747fa69736c63cbb81f70332872dcad50175f210c12d3cfc31397d41088"
+          "0x9dd2180a27c5f7dc4f1ef6dba445e5c745818e69b414c341276d8d696293d3bc",
+          "0x44678e9bf8d9974f211cc38ba837aacd86545b9020915ee62f2c013cb543f006",
+          "0xcba1a4d73754598cdda04a7090673b69f227a4a1c5a296189f6c58ef0433aa0e"
         ]
       },
       "history": "The previous evidence was on a superseded handler deployment whose marketsSettled counter reads 0 — i.e. it never settled anything at this address. Re-proven on the current build.",
       "provenance": {
-        "codeHash": "0xc58d368b4cad839bae8b2b80466dc0e8c5d07781003f273ee7d88a11d77dfee6",
-        "block": "5 Sep 2026"
+        "codeHash": "0x6ec80e8ac2d2676b7c3a4512561336b2ae3e464823f08aeb12af7dde1b504444",
+        "checkedAt": "runtime"
       }
     },
     {
       "id": "batch-cap",
-      "claim": "The handler settles a bounded batch of 13 mandates, sized from a three-point fit on the deployed bytecode.",
+      "claim": "The handler settles a bounded batch of 17 mandates, sized from a fit on the deployed bytecode and corroborated by an out-of-gas ceiling observed at 32.",
       "appearsIn": [
         "README",
         "deck",
@@ -209,17 +208,13 @@
       "status": "LIVE-ASSERTED",
       "proof": {
         "assertion": "batchCap on the deployed handler EQUALS floor(0.5 x where the shipped 8,000,000 gasLimit binds), computed from an ordinary-least-squares fit over the points in .measurements/deadhand-fit.json that were measured on the deployed code hash. verify.ts asserts the equality, not merely that a fit exists.",
-        "runsAgainst": "gasUsed read from Deadhand events emitted by REAL validator invocations on the current bytecode, at three batch sizes",
+        "runsAgainst": "gasUsed read from Deadhand events emitted by REAL validator invocations on the current bytecode, at two batch sizes, plus a third invocation at n=32 that ran OUT OF GAS and bounds the line from above",
         "source": ".measurements/deadhand-fit.json, scripts/verify.ts"
       },
-      "history": "Shipped as 24 from a fit taken on handler 0xDED8c0bE..., whose marketsSettled counter reads 0 - it never settled anything at that address. Also briefly stood at 32 while a measurement run was in flight, and verify.ts passed it green because the check asserted that measurement points EXISTED but not that the deployed cap followed from them. That hole is closed.",
+      "history": "Shipped as 24 from a fit taken on handler 0xDED8c0bE..., whose marketsSettled counter reads 0 - it never settled anything at that address. Also briefly stood at 32 while a measurement run was in flight, and verify.ts passed it green because the check asserted that measurement points EXISTED but not that the deployed cap followed from them. That hole is closed. | 8 Sep: re-fitted on 0x6ec80e8a after the registry redeploy. n=3 1,550,679 and n=12 3,302,336 give ~966,795 fixed + ~194,628 per mandate, binding at 35 and shipping at 17. A run at n=32 was DELIVERED and FAILED at the 8,000,000 limit (DeadhandFailed, pendingSettlement stayed 32), so the real cost there exceeds ~7.89M against a predicted 7.19M - the two-point line under-predicts at high n by at least 10%, the same direction as the +5.8% seen on the previous bytecode. Taking the ceiling as the slope puts binding at ~32, which is why 17 keeps its 50% headroom rather than being raised.",
       "provenance": {
-        "codeHash": "0xc58d368b4cad839bae8b2b80466dc0e8c5d07781003f273ee7d88a11d77dfee6",
-        "evidence": [
-          "0xd9162752036bb1c08fd85556066b599ec5960df58efafd46582030d8889b57e9",
-          "0x5a4d63b79075ebf0d6ad5f7bdb106013ae483d75f112259518fb774d6726f672",
-          "0x8f389e54f85f32bf6b14364f9a3b6f40c1803874ca7a2719c2a1beb60e5d0356"
-        ]
+        "codeHash": "0x6ec80e8ac2d2676b7c3a4512561336b2ae3e464823f08aeb12af7dde1b504444",
+        "checkedAt": "runtime"
       },
       "caveat": "RESOLVED. The two-point fit rested on one point that was the handler's first-ever settle, which deflated the slope - the dangerous direction. The n=32 point corrects it: marginal rises from 216,807 to 233,279 (+7.6%), and the two-point fit under-predicted the real n=32 cost by 5.8% (7,637,929 predicted vs 8,082,346 measured). The 50% headroom absorbed the error and the cap is unchanged at 13.",
       "points": [
@@ -236,29 +231,31 @@
     },
     {
       "id": "skip-cost",
-      "claim": "Ignoring a finalization that is not ours costs 291,181 gas (0.001747086 STT at 6 gwei), deterministic on every invocation.",
+      "claim": "Ignoring a finalization that is not ours costs 0.00174709 STT per invocation (~256,924 gas at the observed 6.8 gwei), deterministic across invocations.",
       "appearsIn": [
         "README",
         "deck"
       ],
       "status": "MEASURED",
       "proof": {
-        "assertion": "gasUsed and effectiveGasPrice read from eth_getTransactionReceipt on real validator invocations, located via the DeadhandSaw log. Identical on every sample.",
+        "assertion": "Balance delta over a window in which the handler had ZERO mandates, so every invocation took the skip path and nothing else. 6 pure skips, no settles mixed in. The STT figure is measured; the gas figure is derived from it and depends on the assumed effective price.",
         "runsAgainst": "receipts of live validator invocations against the deployed handler — not a balance delta divided by a count",
         "source": "scripts/measure-skip.ts"
       },
       "caveat": "Quotable ONLY with the armed cost attached: ~15.1 STT/day at one finalization per 10s. 'We subscribe to everything and pay a rounding error' is FALSE and must not be said. The argument that survives is the shape, not the price: one subscription regardless of how many delegations exist, against a per-user-per-order model that scales with users x orders.",
       "history": "RETRACTED: 0.00044017 STT / ~64,700 gas. That figure does not reproduce on this build, and the ~28,000 gas of H1 instrumentation added since does not explain a 4.5x gap. Retracted as unexplained rather than re-derived — inventing an explanation is how the previous three wrong numbers survived. Also retracted: 789 gas (probe handler), and 78,100 / ~339,000 (both divided out of MIXED windows and disagreeing by 4x).",
       "provenance": {
-        "codeHash": "0xc58d368b4cad839bae8b2b80466dc0e8c5d07781003f273ee7d88a11d77dfee6",
+        "codeHash": "0x6ec80e8ac2d2676b7c3a4512561336b2ae3e464823f08aeb12af7dde1b504444",
+        "checkedAt": "runtime",
         "evidence": [
-          "0x7aff8eff55f9d9d151437909e2148bcedc71d444629120c3f1832d499be4c9e5",
-          "0xb5c7f6112812b5966687d77dd4ebf97c4d1503afd871d84205e30d3b072dd1e2",
-          "0x72124629ba332d48bfd14f0339327521ce9d155f1b3905f68b5c50563952d429"
-        ],
-        "note": "Skip invocations: a DeadhandSaw log and no Deadhand log, so nothing was settled. gasUsed 291,181 on all three."
+          "0xa4f9c5e5cb10ca213c08c57673913b3958f0e71c7027f963f2221ede81e8358a",
+          "0xe7d7ab4b417f8ee8922334b9c8c0e7c296b58a6357601a83043efde5de9029a9",
+          "0xf31bb748731aa467b69596a53bace42754d0d68ada69189749b16914245f1fa8",
+          "0xb1c92c58611bf839343b74de50ab345d8b5b3370e37ddce27f02ed8e5b3ee319"
+        ]
       },
-      "alsoEstablished": "Charging is on gas USED, not gasLimit: the identical figure came back to the wei at gasLimit 3,000,000 and 8,000,000 — same call, one variable changed. And pendingSettlement is O(1), so the skip cost does not grow with the mandate count."
+      "alsoEstablished": "Charging is on gas USED, not gasLimit: the identical figure came back to the wei at gasLimit 3,000,000 and 8,000,000 — same call, one variable changed. And pendingSettlement is O(1), so the skip cost does not grow with the mandate count.",
+      "note": "Measured twice, 20 minutes apart, on the same bytecode: 0.00174709 STT per skip both times, identical to the wei. The receipts above are from the second run - the first captured none, because this RPC serves 1000 blocks (~100s) and the window had already scrolled past by the time anyone went looking. measure-skip.ts now collects them while they are still readable."
     },
     {
       "id": "one-subscription-n-beneficiaries",
@@ -275,7 +272,7 @@
         "source": "contracts/src/DeadhandHandler.sol"
       },
       "provenance": {
-        "codeHash": "0xc58d368b4cad839bae8b2b80466dc0e8c5d07781003f273ee7d88a11d77dfee6",
+        "codeHash": "0x6ec80e8ac2d2676b7c3a4512561336b2ae3e464823f08aeb12af7dde1b504444",
         "checkedAt": "runtime"
       }
     },

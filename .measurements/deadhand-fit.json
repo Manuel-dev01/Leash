@@ -49,5 +49,14 @@
     "at": "2026-09-08T05:20:06.254Z",
     "subGasLimit": "8000000",
     "firstEver": false
+  },
+  {
+    "n": 32,
+    "gas": null,
+    "outcome": "DeadhandFailed",
+    "codeHash": "0x6ec80e8ac2d2676b7c3a4512561336b2ae3e464823f08aeb12af7dde1b504444",
+    "at": "2026-09-08T05:00:00.000Z",
+    "subGasLimit": "8000000",
+    "note": "OUT OF GAS at the shipped 8,000,000 limit. Delivered and attempted - the validator invocation emitted DeadhandFailed and pendingSettlement stayed at 32. Not a gas measurement (it never completed); it is a CEILING: the real n=32 cost exceeds ~7.89M once the ~107k wrapper is taken off. The two-point line over n=3 and n=12 predicts 7.19M there, so the fit UNDER-predicts at high n by at least 10% - the same direction, and worse, than the +5.8% seen on the previous bytecode. The 32 mandates were then settled from a stranger key in bounded slices, which is the delete-test passing at full size."
   }
 ]
