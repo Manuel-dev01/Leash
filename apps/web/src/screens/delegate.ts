@@ -100,13 +100,44 @@ function marketPicker(): string {
   if (state.marketsState === "empty") {
     return '<span class="hint">no market is open right now — the venue runs six at a time and there are gaps between windows.</span>';
   }
-  return state.markets
+  // Which of these the mandate actually permits. Until the contract has been
+  // asked, claim nothing: `state.allowed` before that is the DRAFT set from the
+  // delegator's own screen and says nothing about this mandate.
+  const known = state.allowedKnown;
+  const permits = (mk: { marketId: string }) => state.allowed.has(mk.marketId);
+  const openToUs = known ? state.markets.filter(permits).length : state.markets.length;
+
+  /**
+   * The case that cost a real testing session.
+   *
+   * Event Contract markets resolve in 2-12 MINUTES, and a mandate's allowed
+   * list is written once at creation and can never be added to. So a mandate
+   * whose expiry says "7 days" stops having anything to trade within minutes of
+   * being made, and every order after that is refused MarketNotAllowed - which
+   * reads as a broken app rather than an expired opportunity.
+   */
+  const stranded = known && openToUs === 0
+    ? '<div class="sep" style="display:flex;flex-direction:column;gap:6px">' +
+      '<span role="status" style="font-size:12.5px;color:var(--accent);overflow-wrap:anywhere">' +
+      "none of the markets open right now are on this mandate.</span>" +
+      '<span class="hint">these markets resolve every few minutes, and a mandate can only ever name the ones that existed when it was created. the delegator needs to set up a new delegation for the markets trading now.</span>' +
+      "</div>"
+    : "";
+
+  return stranded + state.markets
     .map((mk, i) => {
       const on = i === state.activeMarket;
+      const ok = known ? permits(mk) : true;
+      // Not selectable when the contract would refuse it. The refusal is real
+      // and worth showing, but not as the default outcome of picking the first
+      // row on the screen.
+      const tag = !ok ? "not on mandate" : on ? "trading" : "pick";
+      const colour = !ok ? "var(--dimmer)" : on ? "var(--accent)" : "var(--dimmer)";
       return [
-        '<button data-pick="' + i + '" class="mk" aria-pressed="' + on + '">',
+        '<button data-pick="' + i + '" class="mk" aria-pressed="' + (on && ok) + '"' +
+          (ok ? "" : " disabled") + ' style="' + (ok ? "" : "opacity:0.45") + '">',
         '<span style="line-height:1.5;min-width:0;overflow-wrap:anywhere;flex:1 1 auto">' + esc(mk.label) + "</span>",
-        '<span style="font-size:11px;flex:0 0 auto;color:' + (on ? "var(--accent)" : "var(--dimmer)") + '">' + (on ? "trading" : "pick") + "</span>",
+        '<span style="font-size:11px;flex:0 0 auto;color:' + colour + '">' + tag + "</span>",
         "</button>",
       ].join("");
     })
@@ -117,6 +148,25 @@ function marketPicker(): string {
 
 export function tradeScreen(d: MonitorData | null): string {
   const mk = state.markets[state.activeMarket];
+  // Unknown until the contract has been asked; do not block on a guess.
+  const mkAllowed = !mk ? false : !state.allowedKnown || state.allowed.has(mk.marketId);
+
+  /**
+   * Is the connected wallet the one this mandate names?
+   *
+   * The contract answers NotDelegate, which the screen renders as "this mandate
+   * is not for your wallet" - true, but only AFTER a click, and it does not say
+   * which wallet would work. The mandate has carried both addresses the whole
+   * time, so the screen can simply say so.
+   *
+   * The common way in is the role switch: it changes the VIEW, not the wallet,
+   * so switching to "delegate" in the delegator's window leaves the delegator's
+   * account connected to the delegate's screen.
+   */
+  const wants = d ? (d.m[1] as string) : null;
+  const wrongWallet = !!(wants && state.account &&
+    wants.toLowerCase() !== state.account.toLowerCase());
+  const short = (a: string) => a.slice(0, 6) + "…" + a.slice(-4);
   const sideBtn = (k: "up" | "down", label: string, color: string) =>
     '<button data-side="' + k + '" class="side btn" aria-pressed="' + (state.side === k) + '" style="background:' +
     (state.side === k ? color : "none") + ";color:" + (state.side === k ? "#0f0f0f" : "var(--dim)") +
@@ -143,6 +193,14 @@ export function tradeScreen(d: MonitorData | null): string {
         "</div>"
       : '<div class="sep rowline"><span style="font-size:12px;color:var(--dimmer)">trading as</span>' +
         '<span style="font-size:12.5px">' + state.account.slice(0, 6) + "…" + state.account.slice(-4) + "</span></div>",
+    wrongWallet
+      ? '<div class="sep" style="display:flex;flex-direction:column;gap:6px">' +
+        '<span role="alert" style="font-size:12.5px;color:var(--accent);overflow-wrap:anywhere">' +
+        "this delegation is for " + esc(short(wants as string)) + ", and you are connected as " +
+        esc(short(state.account as string)) + ".</span>" +
+        '<span class="hint">switch accounts in your wallet, or open this link in the browser where that wallet lives. the role switch at the bottom changes the view, not the wallet.</span>' +
+        "</div>"
+      : "",
     '<div class="sep" style="display:flex;flex-direction:column;gap:9px;min-width:0">',
     '<span class="eyebrow" style="letter-spacing:0.12em">market</span>',
     '<div style="display:flex;flex-direction:column;gap:5px;min-width:0">' + marketPicker() + "</div>",
@@ -161,8 +219,15 @@ export function tradeScreen(d: MonitorData | null): string {
     '<span class="hint" id="t-size-note">checked against the per-order cap before anything is pulled.</span>',
     "</div>",
     err(),
-    '<button id="t-place" class="btn accent"' + (state.busy || !mk || !state.mandateId || !state.account ? " disabled" : "") + ">" +
-      (state.busy ? "placing…" : "place order") + "</button>",
+    // Blocked when the mandate does not name this market. The contract refuses
+    // it either way; offering the button anyway just makes the refusal look
+    // like a fault in the app.
+    '<button id="t-place" class="btn accent"' +
+      (state.busy || !mk || !state.mandateId || !state.account || !mkAllowed || wrongWallet ? " disabled" : "") + ">" +
+      (state.busy ? "placing…"
+        : wrongWallet ? "wrong wallet for this delegation"
+        : !mkAllowed && mk ? "not on this mandate"
+        : "place order") + "</button>",
     marketDetail(),
     ordersDetail(d),
     "</div>",

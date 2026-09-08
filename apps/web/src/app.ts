@@ -198,6 +198,18 @@ async function refreshMandate() {
       if (gen !== generation) return;
       state.allowed = allowed;
       state.allowedKnown = checked === state.markets.length;
+
+      // Land on something tradable. activeMarket defaults to 0, which is
+      // whichever market the venue happened to create most recently and has no
+      // relationship to this mandate - so the delegate's first order was
+      // refused MarketNotAllowed by default.
+      if (state.allowedKnown && allowed.size > 0) {
+        const current = state.markets[state.activeMarket];
+        if (!current || !allowed.has(current.marketId as string)) {
+          const i = state.markets.findIndex((m) => allowed.has(m.marketId as string));
+          if (i >= 0) state.activeMarket = i;
+        }
+      }
     }
     if (fresh) monitor = fresh;
     set({ chainAt: fresh ? startedAt : state.chainAt });
