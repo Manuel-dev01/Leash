@@ -125,17 +125,24 @@ async function main() {
   // 32 STT is a balance FLOOR checked at subscribe, not a deposit.
   if (hBal < 32_500_000_000_000_000_000n) problems.push(`handler holds ${formatEther(hBal)} STT — below the 32 STT floor plus a margin, so subscribe() will revert InsufficientBalance`);
   if (claims > held) {
-    // NOT a blocker, and NOT "run collect.ts". Most of this backlog is phantom:
-    // the _sweep defect returns collateral to whichever delegator places next
-    // WITHOUT decrementing refundClaim, so the claim stays booked against money
-    // that has already left. sweepRefunds pays from balance, so it can never
-    // clear them. Telling the operator to run a command that cannot work is the
-    // same class of lie as a status line that prints without checking.
+    // NOT a blocker. This note used to assert a cause it never checked - "most
+    // are PHANTOM, booked against collateral _sweep already returned, the
+    // contract fix can clear them" - and the 8 Sep redeploy falsified both
+    // halves: _sweep no longer does that, and the fix did NOT clear them.
+    //
+    // What is actually true is a split, and only chain state can say which:
+    //   - an order that RESTED: escrow comes back from the pool after a few
+    //     minutes, and collect.ts pays it out in full.
+    //   - an order that FILLED: the stake became an outcome position, and the
+    //     registry has no interface to redeem one, so the claim never pays.
+    //
+    // So report the number and both readings, and let the operator look.
     console.log(`
-  NOTE  ${formatUnits(claims - held, 6)} tUSDC of refund claims are outstanding and most are PHANTOM —`);
-    console.log(`        booked against collateral that _sweep already returned without decrementing them.`);
-    console.log(`        collect.ts cannot clear these; the contract fix can. Fine to record with this showing:`);
-    console.log(`        it is a defect our own instrumentation found and diagnosed.`);
+  NOTE  ${formatUnits(claims - held, 6)} tUSDC booked beyond what the registry holds.`);
+    console.log(`        If those orders RESTED this is proceeds still in flight — wait a few minutes,`);
+    console.log(`        run collect.ts, and it clears. If they FILLED, the stake is an outcome position`);
+    console.log(`        the registry cannot redeem (knownLimitations: no-redeem-path) and it will not clear.`);
+    console.log(`        Neither blocks a recording; the beats do not depend on it.`);
   }
 
   for (const [name, floor] of [["FUND_KEY", 5n], ["DELEGATE_KEY", 1n], ["STRANGER_KEY", 5n]] as const) {
