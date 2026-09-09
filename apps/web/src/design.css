@@ -224,10 +224,17 @@ input[type=range] { accent-color: var(--accent); height: 20px; }
 .disclose > summary {
   cursor: pointer; list-style: none;
   font-size: 11px; letter-spacing: 0.12em; color: var(--dimmer);
+  /* A row, so a summary carrying two spans separates them instead of running
+     together - "78,963.614m 18s" was a strike and a countdown with no gap.
+     A single-child summary only sees its marker move to the right. */
+  display: flex; align-items: baseline; gap: 10px;
+  justify-content: space-between; min-width: 0;
 }
 .disclose > summary::-webkit-details-marker { display: none; }
-.disclose > summary::after { content: " +"; }
-.disclose[open] > summary::after { content: " 3"; }
+/* Written as CSS unicode escapes on purpose. These were literal bytes once and
+   mojibaked: the open marker rendered as "03" beside "about this market". */
+.disclose > summary::after { content: "\002B"; flex: 0 0 auto; }
+.disclose[open] > summary::after { content: "\2212"; flex: 0 0 auto; }
 .disclose > summary:hover { color: var(--dim); }
 
 .screen { display: flex; flex-direction: column; gap: 18px; min-width: 0; }

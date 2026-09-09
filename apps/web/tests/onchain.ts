@@ -9,7 +9,7 @@
  *
  * Read-only, against the real RPC. Nothing here writes.
  */
-import { createPublicClient, http, parseAbi, type Address } from "viem";
+import { createPublicClient, http, parseAbi, parseAbiItem, type Address } from "viem";
 // From the app's own source, so a redeploy that updates chain.ts updates the
 // tests in the same edit. chain.ts guards `globalThis.location`, so it is
 // safe to import in Node.
@@ -73,3 +73,48 @@ export async function someMandate(): Promise<FoundMandate> {
 
 /** Back-compat alias: the specs read better with this name at the call sites. */
 export const liveMandate = someMandate;
+
+/**
+ * The live markets, read independently of the app.
+ *
+ * The point is independence: a test that renders the app and then asks the app
+ * what it should have rendered proves only that it is self-consistent. These
+ * come straight from MarketCreated so the assertions can compare the screen
+ * against the chain.
+ */
+export interface ChainMarket {
+  marketId: string;
+  asset: string;
+  strike: bigint;
+  question: string;
+  expiry: bigint;
+}
+
+const marketCreated = parseAbiItem(
+  "event MarketCreated(bytes32 indexed marketId, address indexed market, address indexed pool, uint256 oracleQuestionId, uint32 operatorId, bytes32 venueId, address creator, address collateral, uint256 yesId, uint256 noId, uint64 nonce, uint8 outcomeSlotCount, uint8 marketType, uint64 tradingStart, uint64 expiry, uint8 voidPolicy, string asset, uint256 strike, string question, bytes context)",
+);
+
+export async function liveMarkets(): Promise<ChainMarket[]> {
+  const head = await pub.getBlockNumber();
+  const now = BigInt(Math.floor(Date.now() / 1000));
+  const seen = new Map<string, ChainMarket>();
+  // Several windows back, because the 1000-block cap is only ~100 seconds and a
+  // market that is still live may have been created well before that.
+  for (let i = 0; i < 8; i++) {
+    const hi = head - BigInt(i) * 999n;
+    if (hi <= 999n) break;
+    const logs = await pub.getLogs({ event: marketCreated, fromBlock: hi - 999n, toBlock: hi })
+      .catch(() => []);
+    for (const l of logs) {
+      const a = l.args as { marketId?: string; asset?: string; strike?: bigint; question?: string; expiry?: bigint };
+      if (!a.marketId || (a.expiry ?? 0n) <= now) continue;
+      if (!seen.has(a.marketId)) {
+        seen.set(a.marketId, {
+          marketId: a.marketId, asset: a.asset ?? "", strike: a.strike ?? 0n,
+          question: a.question ?? "", expiry: a.expiry ?? 0n,
+        });
+      }
+    }
+  }
+  return [...seen.values()];
+}

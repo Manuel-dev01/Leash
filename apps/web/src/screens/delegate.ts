@@ -6,15 +6,16 @@
  * permanently — the delegate cannot look at a market without seeing what they
  * are working inside.
  *
- * The chart on market_detail ships under an explicit override of the read-only
- * mirror rule. It is decorative and labelled as such; the allowed line and the
- * mandate figures beside it are read from the contract.
+ * There is no chart here any more. `market_detail` used to draw a hardcoded
+ * twelve-point line labelled "indicative"; the markets screen shows the venue's
+ * real question, strike, window and fees instead. Every mandate figure on this
+ * screen is read from the contract.
  */
 import {
   pub, wallet, connect, addNetwork, onRightChain, registryAbi, REGISTRY,
   txUrl, fmt, errName,
 } from "../chain.js";
-import { state, set, staleness } from "../state.js";
+import { state, set, go, staleness } from "../state.js";
 import { err } from "./delegator.js";
 import type { MonitorData } from "./delegator.js";
 import type { Address, Hex } from "viem";
@@ -204,6 +205,7 @@ export function tradeScreen(d: MonitorData | null): string {
     '<div class="sep" style="display:flex;flex-direction:column;gap:9px;min-width:0">',
     '<span class="eyebrow" style="letter-spacing:0.12em">market</span>',
     '<div style="display:flex;flex-direction:column;gap:5px;min-width:0">' + marketPicker() + "</div>",
+    '<button id="t-markets" class="btn ghost">what are these markets? &rarr;</button>',
     "</div>",
     '<div class="sep" style="display:flex;flex-direction:column;gap:10px">',
     '<span class="eyebrow" style="letter-spacing:0.12em" id="side-label">side</span>',
@@ -235,6 +237,7 @@ export function tradeScreen(d: MonitorData | null): string {
 }
 
 export function bindTrade(): void {
+  document.getElementById("t-markets")?.addEventListener("click", () => { go("markets"); });
   document.getElementById("t-connect")?.addEventListener("click", async () => {
     set({ busy: true, error: "" });
     try {
@@ -333,20 +336,12 @@ async function ensureNetwork(): Promise<void> {
 // delegate had to navigate away from the ticket to see what they were about to
 // trade and then navigate back. They are disclosures on the one screen now.
 
-/**
- * Decorative price line, shipped under an explicit override of the
- * read-only-mirror rule. Labelled as indicative so nothing here can be mistaken
- * for a mandate figure.
- */
-function spark(): string {
-  const pr = [118, 110, 124, 96, 88, 104, 72, 78, 60, 66, 48, 40];
-  const pts = pr.map((y, i) => (i * 320) / (pr.length - 1) + "," + y).join(" ");
-  return [
-    '<svg viewBox="0 0 320 130" preserveAspectRatio="none" style="width:100%;height:96px;display:block" aria-hidden="true">',
-    '<polyline points="' + pts + '" fill="none" stroke="var(--accent)" stroke-width="1.5" />',
-    "</svg>",
-  ].join("");
-}
+// `spark()` lived here: twelve hardcoded numbers drawn as a price line, and
+// labelled "indicative". In a product whose entire claim is that every figure
+// on screen is read from the contract, it was the one thing that was invented.
+// The markets screen shows the venue's real question, strike, window and fees
+// instead, and says plainly that no binary order book is readable on chain
+// rather than drawing something in the gap.
 
 export function marketDetail(): string {
   const mk = state.markets[state.activeMarket];
@@ -358,8 +353,6 @@ export function marketDetail(): string {
   return [
     '<details class="disclose"><summary>about this market</summary>',
     '<div style="display:flex;flex-direction:column;gap:10px;padding-top:12px">',
-    spark(),
-    '<span class="hint">indicative price line — not a mandate figure and not read from chain.</span>',
     '<div class="rowline" style="padding:8px 0;border-top:1px solid var(--rule)"><span style="font-size:12px;color:var(--dimmer)">resolves</span><span style="font-size:12.5px">' +
       (secs > 0 ? Math.floor(secs / 60) + "m" : "resolved") + "</span></div>",
     '<div class="rowline" style="padding:8px 0;border-top:1px solid var(--rule)"><span style="font-size:12px;color:var(--dimmer)">on their allowed list</span><span style="font-size:12.5px;color:' +

@@ -478,8 +478,19 @@ async function main() {
       "an unconditional freshness claim is back in the UI — it must be computed from chainAt");
     must(/freshnessLine\(\)/.test(src), "the monitor screen no longer renders its own read age");
     must(/staleness\(\)/.test(src), "the delegate envelope no longer checks staleness");
-    must(/indicative price line/.test(readFileSync("apps/web/src/screens/delegate.ts", "utf8")),
-      "the chart is no longer labelled indicative");
+    /**
+     * This used to require the chart to be LABELLED "indicative price line".
+     * The chart is gone — it was twelve hardcoded numbers in a product whose
+     * whole claim is that on-screen figures come from the contract — so the
+     * check now asserts the stronger property: no fabricated series exists at
+     * all. A label is a mitigation; absence is the fix.
+     */
+    const uiSrc = ["apps/web/src/screens/delegate.ts", "apps/web/src/screens/delegator.ts",
+                   "apps/web/src/screens/markets.ts"].map((f) => readFileSync(f, "utf8")).join("");
+    must(!/function spark\(/.test(uiSrc), "spark() is back — a hardcoded price series must not ship");
+    must(!/<polyline/.test(uiSrc), "a <polyline> is back in the UI: assert its points are read from chain, or remove it");
+    must(!/indicative price line/.test(uiSrc),
+      "the indicative-price label is back, which means the invented chart is back with it");
     return `dead RPC -> "—" (read=false); live RPC -> "${liveHeld.value}" (clean=${liveHeld.clean})`;
   });
 

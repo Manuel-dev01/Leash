@@ -10,6 +10,11 @@
  * both reject a mixed-case address whose checksum does not verify, and a
  * hand-typed one silently will not.
  *
+ * ⚠️ It only rewrites WHOLE addresses. A truncated one in prose —
+ * `0x7ca9dA7B…23418864`, as the checklist had — does not match and survives a
+ * redeploy looking plausible. After running this, grep for the old address's
+ * first six characters across *.md and *.ts.
+ *
  *   npx tsx scripts/retarget.ts --from-registry 0x… --from-handler 0x…
  *   npx tsx scripts/retarget.ts --from-registry 0x… --from-handler 0x… --write
  *

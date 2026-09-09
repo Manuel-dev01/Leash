@@ -209,12 +209,14 @@ export function limitsScreen(): string {
     "</div>",
     slider("s-days", "expires_in_days", state.days, 1, 30, 1, "the delegation dies on its own. no transaction required to end it.", "days"),
     err(),
+    '<button id="d-markets" class="btn ghost">what are these markets? &rarr;</button>',
     '<button id="d-review" class="btn">review &rarr;</button>',
     "</div>",
   ].join("");
 }
 
 export function bindLimits(): void {
+  document.getElementById("d-markets")?.addEventListener("click", () => { go("markets"); });
   // Bound HERE, where the button exists. It was wired at module load in app.ts,
   // before the screen had ever rendered, so it silently did nothing — a dead
   // control on the one screen whose job is to recover from a failed read.
@@ -570,6 +572,7 @@ export function manageScreen(d: MonitorData | null): string {
     // was made. Without this the delegation is alive and untradable, which is
     // how it read to the person testing it: every order refused, no way out.
     marketsRow(),
+    '<button id="m-markets-all" class="btn ghost">see the live markets &rarr;</button>',
     '<button id="m-link" class="btn ghost">show the link again</button>',
     // With the app now reopening your delegation automatically, this is the
     // only way back into setup — without it a delegator with one mandate can
@@ -586,6 +589,7 @@ export function manageScreen(d: MonitorData | null): string {
 }
 
 export function bindManage(): void {
+  document.getElementById("m-markets-all")?.addEventListener("click", () => { go("markets"); });
   document.getElementById("m-markets")?.addEventListener("click", async () => {
     if (!state.mandateId || !state.account) { set({ error: "connect the delegator wallet first" }); return; }
     const ids = state.markets.map((m) => m.marketId as Hex);

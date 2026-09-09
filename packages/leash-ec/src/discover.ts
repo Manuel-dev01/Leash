@@ -54,6 +54,40 @@ export interface DiscoveredMarket {
   tradingStart: bigint;
   expiry: bigint;
   nonce: bigint;
+  /**
+   * The venue's own words for what this market resolves on, e.g.
+   * "Pricefeed test: will BTC/USDC's price be at or above 79011.95 at unix
+   * time 1788947700?".
+   *
+   * These four were decoded out of every MarketCreated log and then dropped on
+   * the floor. They are the only human-readable description of a market that
+   * exists anywhere on chain, and the app was showing an invented sparkline
+   * instead of them.
+   */
+  question: string;
+  marketType: number;
+  voidPolicy: number;
+  outcomeSlotCount: number;
+}
+
+/**
+ * The pool's own parameters, as `getBinaryPoolParams()` returns them.
+ *
+ * `tradableMarketsDetailed` has always fetched this to check `finalized` and
+ * the recycled-pool case, and thrown the rest away. Fees are real market terms
+ * a delegate is agreeing to; they cost nothing extra to keep.
+ */
+export interface PoolParams {
+  collateralToken: Address;
+  outcomeToken: Address;
+  oneCollateral: bigint;
+  feeRecipient: Address;
+  makerFeeBpsTimes1k: bigint;
+  takerFeeBpsTimes1k: bigint;
+  settlementFeeBpsTimes1k: bigint;
+  settlement: Address;
+  marketNonce: bigint;
+  finalized: boolean;
 }
 
 /**
@@ -138,6 +172,9 @@ export async function discoverMarkets(
           marketId: a.marketId, market: a.market, pool: a.pool, venueId: a.venueId,
           collateral: a.collateral, asset: a.asset, strike: a.strike,
           tradingStart: a.tradingStart, expiry: a.expiry, nonce: a.nonce,
+          question: a.question ?? "", marketType: Number(a.marketType ?? 0),
+          voidPolicy: Number(a.voidPolicy ?? 0),
+          outcomeSlotCount: Number(a.outcomeSlotCount ?? 0),
         });
       } catch {
         // Counted, not hidden. If MarketCreated's shape drifts, discovery would
@@ -176,6 +213,14 @@ export interface TradableResult {
   live: DiscoveredMarket[];
   checked: number;
   errors: number;
+  /**
+   * The pool params read during the tradability check, keyed by marketId.
+   *
+   * Returned rather than discarded: the read already happened, and asking the
+   * chain a second time for something we just had would be the sort of extra
+   * traffic that made an earlier build hang a browser context on teardown.
+   */
+  params: Record<string, PoolParams>;
 }
 
 /**
@@ -205,6 +250,7 @@ export async function tradableMarketsDetailed(
   const limit = opts.limit ?? 8;
   const maxChecks = opts.maxChecks ?? 24;
   const live: DiscoveredMarket[] = [];
+  const params: Record<string, PoolParams> = {};
   let checked = 0;
   let errors = 0;
 
@@ -214,11 +260,14 @@ export async function tradableMarketsDetailed(
 
   /** One candidate, three reads. Returns null when it is not tradable. */
   const inspect = async (m: DiscoveredMarket): Promise<DiscoveredMarket | null> => {
-    const params = (await client.readContract({
+    const p = (await client.readContract({
       address: m.pool, abi: binaryPoolParamsAbi, functionName: "getBinaryPoolParams",
-    })) as unknown as { market: Address; finalized: boolean };
-    if (params.finalized) return null;
-    if (params.market.toLowerCase() !== m.market.toLowerCase()) return null; // pool was recycled
+    })) as unknown as PoolParams & { market: Address };
+    if (p.finalized) return null;
+    if (p.market.toLowerCase() !== m.market.toLowerCase()) return null; // pool was recycled
+    // Kept only once the pool is confirmed to still serve THIS market, so a
+    // recycled pool's terms can never be shown against the wrong market.
+    params[m.marketId] = p;
     const [resolved, voided] = await Promise.all([
       client.readContract({ address: m.market, abi: binaryMarketReadAbi, functionName: "isResolved" }) as Promise<boolean>,
       client.readContract({ address: m.market, abi: binaryMarketReadAbi, functionName: "isVoided" }) as Promise<boolean>,
@@ -241,7 +290,7 @@ export async function tradableMarketsDetailed(
       if (m && live.length < limit) live.push(m);
     }
   }
-  return { live, checked, errors };
+  return { live, checked, errors, params };
 }
 
 /** Convenience wrapper. Throws if every check errored — that is an RPC problem, not an empty venue. */

@@ -1,5 +1,5 @@
 import { test, expect, type Page, type ConsoleMessage } from "@playwright/test";
-import { liveMandate } from "./onchain.js";
+import { liveMandate, liveMarkets } from "./onchain.js";
 import { REGISTRY } from "../src/chain.js";
 import { injectWallet, injectWrongChainWallet, DELEGATOR, DELEGATE } from "./wallet.js";
 import { mkdirSync } from "node:fs";
@@ -373,6 +373,83 @@ test.describe("the wallet can change identity underneath the page", () => {
     // appears under "your orders", because that is where the payouts go. The
     // claim is only about WHO IS TRADING.
     await expect(screen).not.toContainText(new RegExp("trading as\s*" + DELEGATOR.slice(0, 6), "i"));
+  });
+});
+
+/**
+ * The markets screen exists because a delegator asked a fair question: what am
+ * I actually authorising? It ships under an override of the read-only-mirror
+ * rule, so these tests hold it to the terms of that override — real data, no
+ * invented figures, and mandate status on every row.
+ */
+test.describe("the markets screen shows the chain, not a mock-up", () => {
+  const open = async (page: import("@playwright/test").Page) => {
+    await injectWallet(page, DELEGATOR, { preAuthorized: true });
+    await page.goto("/app.html");
+    await page.waitForTimeout(GRACE_MS + 3_000);
+    await page.locator("#m-markets-all").click();
+    await page.waitForTimeout(2_500);
+  };
+
+  test("lists what the chain lists, and says the venue's shape", async ({ page }, info) => {
+    await open(page);
+    const chain = await liveMarkets();
+    const text = await page.locator("#screen").innerText();
+
+    // Compared against an INDEPENDENT chain read, never a number baked in here:
+    // the venue's market count changes every few minutes.
+    const shown = await page.locator("details.disclose").count();
+    expect(shown, `screen shows ${shown} markets, chain has ${chain.length} live`).toBeGreaterThan(0);
+    expect(shown).toBeLessThanOrEqual(chain.length);
+    expect(text).toMatch(/live market/i);
+    expect(await stuck(page)).toEqual([]);
+    await shot(page, "markets", info.project.name);
+  });
+
+  test("the question and strike on screen are the ones on chain", async ({ page }) => {
+    await open(page);
+    const chain = await liveMarkets();
+    const first = page.locator("details.disclose").first();
+    await first.locator("summary").click();
+    await page.waitForTimeout(600);
+    const body = await first.innerText();
+
+    // Find which market this card is, by its question, then check the strike
+    // rendered beside it is that market's strike and not another's.
+    const match = chain.find((m) => m.question && body.includes(m.question));
+    expect(match, "the expanded card shows no question that exists on chain").toBeTruthy();
+    if (match!.strike > 0n) {
+      const whole = (match!.strike / 100n).toLocaleString("en-US");
+      const cents = (match!.strike % 100n).toString().padStart(2, "0");
+      expect(body, "strike on screen does not match the strike on chain")
+        .toContain(`${whole}.${cents}`);
+    }
+  });
+
+  /**
+   * The venue runs two market kinds and only one has a strike:
+   *   "Pricefeed test: will BTC/USDC's price be at or above 79034.05"  strike>0
+   *   "BTC closes at or above its opening price"                       strike=0
+   * Rendering the second as "0.00" would be an invented price, which is the
+   * exact thing deleting the sparkline was meant to end.
+   */
+  test("a market with no strike never renders a zero price", async ({ page }) => {
+    await open(page);
+    const text = await page.locator("#screen").innerText();
+    expect(text, "a market is showing 0.00 as its strike").not.toMatch(/·\s*0\.00/);
+  });
+
+  test("no invented series survives anywhere in the app", async ({ page }) => {
+    await open(page);
+    expect(await page.locator("polyline").count(), "a polyline is back on screen").toBe(0);
+    const body = (await page.locator("body").innerText()).toLowerCase();
+    expect(body).not.toContain("indicative price line");
+  });
+
+  test("every row carries its mandate status", async ({ page }) => {
+    await open(page);
+    const text = await page.locator("#screen").innerText();
+    expect(text).toMatch(/on this mandate|not on mandate|not checked yet/);
   });
 });
 

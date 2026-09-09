@@ -198,6 +198,39 @@ and `test_wideningDoesNotRaiseTheSpendingCap` both assert.
 > opcode's absence from a linear scan of EVM bytecode; ask the compiler that
 > emitted it.
 
+### Venue scope, and why the horizon is not ours
+
+Measured 8 Sep, from `MarketCreated` on chain:
+
+| | |
+|---|---|
+| Markets discovered / still live | 102 / **8** |
+| Assets | **BTC and ETH**, nothing else |
+| Windows | 60s · 300s · 3600s |
+| Longest horizon available at the time | **15 minutes** |
+
+Two market kinds run side by side, and only one carries a strike:
+
+```
+strike=7903405  "Pricefeed test: will BTC/USDC's price be at or above 79034.05 …"
+strike=0        "BTC closes at or above its opening price"
+```
+
+Nobody would delegate months of trading against a three-minute prediction, and
+that is a fair objection — but **the ceiling is the venue's, not Leash's.** A
+mandate names markets by `marketId`, never by horizon or duration; nothing in
+`MandateRegistry` reads an expiry to decide what may be traded. `setMarkets`
+re-points a live mandate at whatever is listed now. If Event Contracts list
+day-long or week-long markets tomorrow, Leash trades them with no change.
+
+The markets screen shows all of this from chain — the venue's own question text,
+strike, trading window, fee schedule, settlement address, and whether each
+market is on your mandate. **It shows no price**, because there is none to
+show: `getBookLevels` is a spot signature and reverts on binary pools (SDK
+feedback item 7), and `BinaryOrderPlaced` carries an id and a side but no price.
+Saying so is more useful than drawing something in the gap — which is what the
+screen it replaced did.
+
 ### The registry holds no funds
 
 `collateral.balanceOf(registry) <= totalOwed + totalRefundClaim`, with

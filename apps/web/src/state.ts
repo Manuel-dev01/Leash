@@ -18,7 +18,13 @@ export type Role = "delegator" | "delegate";
  */
 export type Screen =
   | "setup" | "limits" | "review" | "issue" | "manage"
-  | "trade";
+  | "trade"
+  /**
+   * Every live market, in full, from chain. Reachable from both roles and part
+   * of NEITHER numbered flow — `stepOf` returns null for it, exactly as it does
+   * for `manage` and `trade`, so the setup progress bar is unaffected.
+   */
+  | "markets";
 
 /** The ordered setup steps, for the progress indicator. */
 export const SETUP_STEPS: { screen: Screen; label: string }[] = [
@@ -30,10 +36,19 @@ export const SETUP_STEPS: { screen: Screen; label: string }[] = [
 
 export interface Market {
   marketId: Hex;
+  market: Address;
   pool: Address;
   asset: string;
   expiry: bigint;
+  tradingStart: bigint;
   label: string;
+  /** The venue's own description. Empty only if the log carried none. */
+  question: string;
+  /** 2-decimal, e.g. 7901195 == 79,011.95. */
+  strike: bigint;
+  /** Terms read from getBinaryPoolParams, when the tradability check got them. */
+  fees?: { makerBps: bigint; takerBps: bigint; settlementBps: bigint };
+  settlement?: Address;
 }
 
 /**

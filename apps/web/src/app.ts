@@ -21,6 +21,7 @@ import {
   type MonitorData,
 } from "./screens/delegator.js";
 import { tradeScreen, bindTrade } from "./screens/delegate.js";
+import { marketsScreen, bindMarkets } from "./screens/markets.js";
 import { reloadMarkets } from "./markets.js";
 import type { Address } from "viem";
 import "./design.css";
@@ -114,6 +115,7 @@ function renderScreen() {
     : s === "review" ? reviewScreen()
     : s === "issue" ? issueScreen()
     : s === "manage" ? manageScreen(monitor)
+    : s === "markets" ? marketsScreen()
     : tradeScreen(monitor);
   $("screen").innerHTML = html;
 
@@ -122,6 +124,7 @@ function renderScreen() {
   else if (s === "review") bindReview();
   else if (s === "issue") bindIssue();
   else if (s === "manage") bindManage();
+  else if (s === "markets") bindMarkets();
   else bindTrade();
 }
 

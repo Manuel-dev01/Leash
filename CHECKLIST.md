@@ -55,7 +55,7 @@ No wallet or role is involved here. This is the public page.
 | 1.3 | The first of those four — the one labelled *held by leash, every block* | On load it is briefly `…`, then becomes a **number** (usually `0.00`) or an **em dash `—`**. It must never stay `…` |
 | 1.4 | Read across the other three | `1` signature, then silence · `0` admin keys, upgrades, pauses · `4` limits, checked in the order path |
 | 1.5 | Click **`add somnia 50312`** (in the row with *create a mandate*) | Wallet prompts; the label goes back to `add somnia 50312` within ~2.5s |
-| 1.6 | **Scroll to the very bottom.** The right-hand item reads `registry 0x7ca9dA7B…23418864 →` | It is **underlined**, and clicking it opens the explorer on that address in a new tab |
+| 1.6 | **Scroll to the very bottom.** The right-hand item reads `registry 0x105e7732…860E7679 →` — the same address as the header of this file | It is **underlined**, and clicking it opens the explorer on that address in a new tab |
 | 1.7 | DevTools console | **No errors.** No 404s |
 
 > **1.3 explained.** `…` means "we have not heard from the chain yet". A number
@@ -101,6 +101,23 @@ rationale anywhere on the page.**
 > **If no markets are open** you must see *“no market is open for trading right
 > now…”* plus a working **`check again`** button. You must **never** be left on
 > `reading live markets from chain…` with nothing happening.
+
+### Step 2b — the markets screen (new)
+
+| # | Do | Expect |
+|---|---|---|
+| 2.13a | On step 2, click **`what are these markets? →`** | A screen headed **`the markets, right now`**, with one row per live market |
+| 2.13b | Read the line under the heading | `N live markets, BTC and ETH…` — **N must match** what `npx tsx .tmp/horizons.ts` reports |
+| 2.13c | Read a collapsed row | `BTC · 79,034.05` on the left; on the right, the mandate status **in words** (`on mandate` / `not on mandate` / `not checked yet`) then a countdown. **Never colour alone** |
+| 2.13d | Expand one | The venue's real question, e.g. *"Pricefeed test: will BTC/USDC's price be at or above 79034.05 at unix time …"* |
+| 2.13e | Read the rows inside | resolves-at, resolves-in, trading-opened, mandate status, maker/taker fee, settlement fee, and three explorer links (market · pool · settlement) |
+| 2.13f | Find a market with **no** strike | Some markets read *"BTC closes at or above its opening price"*. Those must show **`its opening price — this market carries no fixed strike`**, and **never `0.00`** |
+| 2.13g | Look for a chart | **There is none, anywhere.** The old "indicative price line" is gone. In its place: *no order book is readable on chain for binary pools…* |
+| 2.13h | Click **`← back`** | Returns to step 2 with your limits intact |
+
+> **Why no price.** `getBookLevels` is a spot signature and reverts on binary
+> pools, and `BinaryOrderPlaced` carries an id and a side but no price. There is
+> genuinely nothing to show, so the screen says so instead of drawing something.
 
 ### Step 3 — review
 
@@ -159,6 +176,7 @@ delegator view.
 |---|---|---|
 | 4.1 | Paste the link from 2.21 into window B | **One screen.** No step counter, and no `01 /` label above the heading |
 | 4.2 | Find **`connect wallet`** | It is **on this screen**. You never touch window A |
+| 4.2b | Click **`what are these markets? →`** | Same markets screen as 2.13a, reached from the delegate's own ticket |
 | 4.3 | Connect | Shows **`trading as 0x5b92…`** |
 | 4.4 | Envelope at the top | **`you may still spend`** with the real remaining budget |
 | 4.5 | Pick a market | The row marks itself `trading` |
@@ -168,7 +186,7 @@ delegator view.
 | 4.8 | Drag the size back down | The refusal **clears as you drag** |
 | 4.9 | Place a valid order | Tx hash + explorer link appears; status `placed` |
 | 4.10 | Watch the envelope | Remaining **drops** within ~8s |
-| 4.11 | Expand **`about this market`** | Opens in place; chart labelled *indicative price line — not a mandate figure* |
+| 4.11 | Expand **`about this market`** | Opens in place. **No chart** — resolves-in and whether it is on the allowed list |
 | 4.12 | Expand **`your orders`** | Opens in place; says payouts settle to the **delegator** |
 
 > **4.9 will usually REST, not fill.** Binary books are quote-only — 4 of 17
