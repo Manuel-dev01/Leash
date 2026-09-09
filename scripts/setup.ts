@@ -38,6 +38,15 @@ function main() {
   console.log("\n  building contracts (verify.ts compares deployed bytecode to this)");
   run("forge build");
 
+  // apps/web has its OWN package.json and is not a workspace of the root, so a
+  // root `npm install` leaves it empty - and verify.ts type-checks AND builds
+  // the web app as two of its 34 checks. Without this a fresh clone reports
+  // "'vite' is not recognized" for a check that is really about the UI.
+  if (existsSync("apps/web/package.json")) {
+    console.log("\n  installing the web app's dependencies");
+    run("npm install --prefix apps/web --no-audit --no-fund");
+  }
+
   console.log("\nReady:");
   console.log("  forge test                 56 contract tests, no network");
   console.log("  npx tsx scripts/verify.ts  34 checks against the live deployment\n");

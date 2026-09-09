@@ -360,7 +360,17 @@ async function main() {
 
   // ---- beat 3 unforgeable ------------------------------------------------
   await check("beat3-unforgeable", async () => {
-    const stranger = acct("STRANGER_KEY");
+    /**
+     * An ADDRESS, not a signer. This is an `eth_call` — nothing is signed — so
+     * requiring STRANGER_KEY meant a judge cloning without a funded .env could
+     * not run the one check that proves the product's premise. Use the real
+     * stranger when it is configured, so the result matches our own runs, and
+     * otherwise any address that is obviously not ours.
+     */
+    const strangerKey = process.env.STRANGER_KEY;
+    const stranger = strangerKey
+      ? acct("STRANGER_KEY")
+      : { address: "0x000000000000000000000000000000000000dEaD" as Hex };
     try {
       await pub.call({
         account: stranger.address,
