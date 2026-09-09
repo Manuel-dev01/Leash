@@ -7,6 +7,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "setup": "tsx scripts/setup.ts",
     "doctor": "tsx scripts/doctor.ts",
     "recon": "tsx scripts/recon.ts",
     "demo-reset": "tsx scripts/demo-reset.ts",

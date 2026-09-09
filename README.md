@@ -21,7 +21,7 @@ steal.
 ## Contents
 
 1. [Two minutes, no setup](#two-minutes-no-setup) — what to click
-2. [Run it yourself](#run-it-yourself) — clone to verified in four commands
+2. [Run it yourself](#run-it-yourself) — clone to verified, in five commands
 3. [Deployed addresses](#deployed-addresses)
 4. [How we use DreamDEX Event Contracts](#how-we-use-dreamdex-event-contracts)
 5. [The three beats](#the-three-beats) — the whole product, as three transactions
@@ -62,9 +62,19 @@ profile. [The demo script](docs/DEMO-SCRIPT.md) is the shot-by-shot version.
 ```bash
 git clone https://github.com/Manuel-dev01/Leash && cd Leash
 npm install
+npm run setup                 # fetches forge-std, builds the contracts
 forge test                    # 56 contract tests, no network needed
 npx tsx scripts/verify.ts     # 34 checks against the LIVE deployment
 ```
+
+`npm run setup` is not boilerplate. `forge-std` is not vendored and
+`contracts/out/` is gitignored, so without it `forge test` fails on an import
+and `verify.ts` reports ENOENT for a check that is really about the chain. It is
+idempotent — re-run it any time.
+
+**`verify.ts` needs no keys** for the checks that matter; it reads public chain
+state. A `.env` is only required for the scripts that spend gas
+(`demo-reset`, `stage3-live`), and `.env.example` lists what they want.
 
 `verify.ts` is the point of this repo. It does not test the code against itself —
 it reads the deployed bytecode, calls the deployed contracts, replays real
