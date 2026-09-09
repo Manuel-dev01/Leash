@@ -42,6 +42,11 @@ AGENTS.md
 DEMO.md
 CHECKLIST.md
 docs/telegram-questions.md
+# Also internal by decision: the SDK feedback report is for the dreamDEX team
+# directly, and the adversarial Q&A is our own stress-test of the submission.
+# Both stay on disk and stay in retarget.ts so a redeploy rolls their addresses.
+docs/sdk-feedback.md
+docs/adversarial.md
 *.dc.html
 apps/web/dist/
 .vercel

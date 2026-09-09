@@ -31,10 +31,9 @@ steal.
 9. [Honesty register](#honesty-register) — what is staged, and what we got wrong
 10. [Repository map](#repository-map)
 
-**Deeper reading:** [Architecture](docs/ARCHITECTURE.md) ·
-[Demo script](docs/DEMO-SCRIPT.md) ·
-[Adversarial questions](docs/adversarial.md) ·
-[Feedback for the dreamDEX team](docs/sdk-feedback.md)
+**Deeper reading:** [Architecture](docs/ARCHITECTURE.md) — how it is built and
+why · [Demo script](docs/DEMO-SCRIPT.md) — the two-and-a-half minutes, shot by
+shot
 
 ---
 
@@ -151,8 +150,10 @@ line 386. There is no state in which Leash holds it.
 
 ### Event Contract facts this build established
 
-None of these are documented anywhere; each cost us a run. The full write-up is
-[`docs/sdk-feedback.md`](docs/sdk-feedback.md).
+None of these is documented anywhere, and each one cost us a run. They are the
+most reusable thing this build produced, so they are listed here rather than
+left in a file — a written report of the full set, with receipts, goes to the
+dreamDEX team directly.
 
 - `placeBinaryOrderFor` is gated by an approved-**contract** allowlist. No EOA
   can be granted routing authority on a binary pool.
@@ -409,7 +410,7 @@ apps/web/                            both UIs, one bundle
 scripts/verify.ts                    34 checks against the live deployment
 scripts/deploy.ts · retarget.ts      deploy, then roll addresses across the repo
 claims.json                          every claim, with provenance by code hash
-docs/                                architecture, demo script, adversarial Q&A, SDK feedback
+docs/                                architecture, and the demo script
 ```
 
 ---
