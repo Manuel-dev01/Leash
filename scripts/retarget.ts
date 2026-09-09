@@ -34,6 +34,10 @@ const FILES = [
   "CHECKLIST.md",
   "claims.json",
   "docs/adversarial.md",
+  // Judge-facing docs. Neither names a deployed address today, but they are the
+  // front door and a stale address there is the worst place to have one.
+  "docs/ARCHITECTURE.md",
+  "docs/DEMO-SCRIPT.md",
   "README.md",
   "DEMO.md",
   "ROADMAP.md",

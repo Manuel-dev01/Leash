@@ -957,7 +957,11 @@ async function main() {
     const hashes = [...readme.matchAll(/shannon-explorer\.somnia\.network\/tx\/(0x[0-9a-fA-F]{64})/g)].map((m) => m[1]!);
     if (new Set(hashes).size < 3) problems.push(`README cites ${new Set(hashes).size} full transaction hashes, needs at least 3`);
     if (/tx\/0x[0-9a-fA-F]{1,63}(?![0-9a-fA-F])/.test(readme)) problems.push("README contains a TRUNCATED transaction hash — it proves nothing");
-    for (const f of ["LICENSE", "DEMO.md", "claims.json", "docs/sdk-feedback.md", "docs/adversarial.md"]) {
+    // DEMO.md is the internal rehearsal log and is no longer tracked; the
+    // judge-facing script is docs/DEMO-SCRIPT.md. The other four are submission
+    // deliverables and must be present in a fresh clone.
+    for (const f of ["LICENSE", "docs/DEMO-SCRIPT.md", "docs/ARCHITECTURE.md",
+                     "claims.json", "docs/sdk-feedback.md", "docs/adversarial.md"]) {
       if (!existsSync(f)) problems.push(`missing ${f}`);
     }
     if (problems.length === 0) {
