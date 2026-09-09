@@ -31,9 +31,8 @@ steal.
 9. [Honesty register](#honesty-register) — what is staged, and what we got wrong
 10. [Repository map](#repository-map)
 
-**Deeper reading:** [Architecture](docs/ARCHITECTURE.md) — how it is built and
-why · [Demo script](docs/DEMO-SCRIPT.md) — the two-and-a-half minutes, shot by
-shot
+**Deeper reading:** [Architecture](docs/ARCHITECTURE.md) — how it is built, and
+why each piece is shaped the way it is.
 
 ---
 
@@ -52,7 +51,8 @@ be one explorer lookup from exposure if it were faked.
 
 To drive it yourself: open the [live app](https://leash-rho.vercel.app), create a
 mandate for any address, and open the link it gives you in a second browser
-profile. [The demo script](docs/DEMO-SCRIPT.md) is the shot-by-shot version.
+profile — a wallet exposes one account per profile, so two tabs are the same
+identity.
 
 ---
 
@@ -410,7 +410,7 @@ apps/web/                            both UIs, one bundle
 scripts/verify.ts                    34 checks against the live deployment
 scripts/deploy.ts · retarget.ts      deploy, then roll addresses across the repo
 claims.json                          every claim, with provenance by code hash
-docs/                                architecture, and the demo script
+docs/ARCHITECTURE.md                 how it is built, and why
 ```
 
 ---

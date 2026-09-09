@@ -35,11 +35,13 @@ contracts/lib/
 CLAUDE.md
 ROADMAP.md
 AGENTS.md
-# Internal operating notes. Real and used, but they are OUR runbook, not the
-# judge's front door: DEMO.md is a rehearsal log, CHECKLIST.md is a QA pass, and
-# telegram-questions.md was a message to a dev group. The judge-facing versions
-# are docs/DEMO-SCRIPT.md and docs/ARCHITECTURE.md.
+# OUR runbook, not the judge's front door. DEMO.md is a rehearsal log,
+# CHECKLIST.md is a QA pass, telegram-questions.md was a message to a dev group,
+# and DEMO-SCRIPT.md is the presenter's voiceover — it carries the lines to say
+# on camera and the ones never to say. docs/ARCHITECTURE.md is the judge-facing
+# companion to the README.
 DEMO.md
+docs/DEMO-SCRIPT.md
 CHECKLIST.md
 docs/telegram-questions.md
 # Also internal by decision: the SDK feedback report is for the dreamDEX team

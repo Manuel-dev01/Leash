@@ -1004,18 +1004,14 @@ async function main() {
     const hashes = [...readme.matchAll(/shannon-explorer\.somnia\.network\/tx\/(0x[0-9a-fA-F]{64})/g)].map((m) => m[1]!);
     if (new Set(hashes).size < 3) problems.push(`README cites ${new Set(hashes).size} full transaction hashes, needs at least 3`);
     if (/tx\/0x[0-9a-fA-F]{1,63}(?![0-9a-fA-F])/.test(readme)) problems.push("README contains a TRUNCATED transaction hash — it proves nothing");
-    // DEMO.md is the internal rehearsal log and is no longer tracked; the
-    // judge-facing script is docs/DEMO-SCRIPT.md. The other four are submission
-    // deliverables and must be present in a fresh clone.
     // Only files a FRESH CLONE has. Requiring an untracked one passes here and
     // fails for the judge, which is the worst possible place to learn it.
-    for (const f of ["LICENSE", "docs/DEMO-SCRIPT.md", "docs/ARCHITECTURE.md",
-                     "claims.json"]) {
+    for (const f of ["LICENSE", "docs/ARCHITECTURE.md", "claims.json"]) {
       if (!existsSync(f)) problems.push(`missing ${f}`);
     }
     if (problems.length === 0) {
       record("PASS", "submission-checklist",
-        `exact heading present, order path linked by line, both addresses named, ${new Set(hashes).size} full tx hashes, LICENSE + demo script + architecture + claims all present`);
+        `exact heading present, order path linked by line, both addresses named, ${new Set(hashes).size} full tx hashes, LICENSE + architecture + claims all present`);
     } else {
       record("FAIL", "submission-checklist", problems.join(" | "));
     }
