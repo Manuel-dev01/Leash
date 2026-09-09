@@ -151,6 +151,41 @@ const REGISTRY = (process.env.MANDATE_REGISTRY ?? ledger.deployed.MandateRegistr
 const HANDLER = (process.env.DEADHAND_HANDLER ?? ledger.deployed.DeadhandHandler) as Address;
 const COLLATERAL = EC.collateral as Address;
 
+/**
+ * An address to probe FROM, for checks that only ever `eth_call`.
+ *
+ * Nothing here is signed, so demanding a private key made these unrunnable by
+ * exactly the person most likely to want to run them: someone who cloned the
+ * repo and has no funded `.env`. That included the check proving the product's
+ * premise — that no EOA can be granted routing authority on a binary pool.
+ *
+ * Uses the configured stranger when there is one, so our runs and a judge's
+ * agree; otherwise an address that is obviously nobody.
+ */
+function strangerAddress(): Address {
+  const v = process.env.STRANGER_KEY;
+  if (v) return privateKeyToAccount((v.startsWith("0x") ? v : `0x${v}`) as Hex).address;
+  return "0x000000000000000000000000000000000000dEaD" as Address;
+}
+
+/**
+ * The delegate of a real mandate, to probe against.
+ *
+ * Falls back to reading a live mandate's `delegate` field, because the check is
+ * "the delegate of THIS mandate cannot withdraw" — which needs a mandate and an
+ * address, not a signer.
+ */
+async function probeDelegate(): Promise<Address> {
+  const v = process.env.DELEGATE_KEY;
+  if (v) return privateKeyToAccount((v.startsWith("0x") ? v : `0x${v}`) as Hex).address;
+  const next = await pub.readContract({ address: REGISTRY, abi: regAbi, functionName: "nextMandateId" }) as bigint;
+  for (let id = next - 1n; id > 0n && id > next - 60n; id--) {
+    const m = await pub.readContract({ address: REGISTRY, abi: regAbi, functionName: "mandates", args: [id] }) as readonly unknown[];
+    if (m[7] === true && m[6] === false) return m[1] as Address;
+  }
+  throw new Error("no live mandate on the registry to probe a delegate against");
+}
+
 const acct = (n: string) => {
   const v = process.env[n];
   if (!v) throw new Error(`${n} missing from the environment`);
@@ -360,17 +395,7 @@ async function main() {
 
   // ---- beat 3 unforgeable ------------------------------------------------
   await check("beat3-unforgeable", async () => {
-    /**
-     * An ADDRESS, not a signer. This is an `eth_call` — nothing is signed — so
-     * requiring STRANGER_KEY meant a judge cloning without a funded .env could
-     * not run the one check that proves the product's premise. Use the real
-     * stranger when it is configured, so the result matches our own runs, and
-     * otherwise any address that is obviously not ours.
-     */
-    const strangerKey = process.env.STRANGER_KEY;
-    const stranger = strangerKey
-      ? acct("STRANGER_KEY")
-      : { address: "0x000000000000000000000000000000000000dEaD" as Hex };
+    const stranger = { address: strangerAddress() };
     try {
       await pub.call({
         account: stranger.address,
@@ -413,8 +438,8 @@ async function main() {
   console.log("\n  --- negative: the six refusals ---------------------------------");
   await check("delegate-cannot-bypass", async () => {
     
-    const delegate = acct("DELEGATE_KEY");
-    const stranger = acct("STRANGER_KEY");
+    const delegate = { address: await probeDelegate() };
+    const stranger = { address: strangerAddress() };
     const next = await pub.readContract({ address: REGISTRY, abi: regAbi, functionName: "nextMandateId" }) as bigint;
     const probe = await liveMandateFor(delegate.address);
     const m = await pub.readContract({ address: REGISTRY, abi: regAbi, functionName: "mandates", args: [probe] }) as readonly unknown[];
@@ -471,7 +496,7 @@ async function main() {
     // Probed against a mandate that EXISTS. Against a non-existent id the
     // revert is NoMandate, which proves nothing about authority — the same
     // shape as a pool's incidental "nothing to withdraw".
-    const delegate = acct("DELEGATE_KEY");
+    const delegate = { address: await probeDelegate() };
     const id = await liveMandateFor(delegate.address);
     try {
       await pub.simulateContract({ account: delegate.address, address: REGISTRY, abi: regAbi, functionName: "revoke", args: [id] as never });
@@ -673,7 +698,7 @@ async function main() {
     // OrderExpiryBeyondMarket — either would revert before the authorization
     // gate and prove nothing about it.
     const expNs = (r.live[0]!.expiry - 5n) * 1_000_000_000n;
-    const stranger = acct("STRANGER_KEY");
+    const stranger = { address: strangerAddress() };
     // The ABI comes from the SDK, not from a signature typed here. A
     // hand-written `placeBinaryOrderFor(address,uint8,...)` hashed to
     // 0x275284bb while the real selector is 0x5d97c566, so the call hit the
